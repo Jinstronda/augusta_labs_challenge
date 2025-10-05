@@ -1,5 +1,24 @@
-pandas==2.0.3
-psycopg2==2.9.9
-numpy==1.24.3
-python-dotenv==1.0.0
-openai==1.68.0
+# Core dependencies
+pandas>=2.3.0
+numpy>=1.26.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Vector embeddings and RAG
+sentence-transformers>=5.0.0
+qdrant-client>=1.7.0
+torch>=2.0.0
+FlagEmbedding>=1.2.0
+datasets>=2.14.0
+transformers>=4.30.0
+accelerate>=0.20.0
+
+# Utilities
+tqdm>=4.65.0
+
+# Machine learning
+scikit-learn>=1.7.0
