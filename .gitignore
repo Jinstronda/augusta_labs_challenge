@@ -1,0 +1,33 @@
+# Environment files with credentials
+config.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# RAG and Vector Storage
+qdrant_storage/
+companies_rag/
+*.index
+*.faiss
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
