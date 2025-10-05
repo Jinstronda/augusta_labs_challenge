@@ -131,6 +131,12 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS top_5_companies JSONB
             """)
             
+            # Add top_5_companies_scored column for LLM-scored results
+            cursor.execute("""
+                ALTER TABLE incentives 
+                ADD COLUMN IF NOT EXISTS top_5_companies_scored JSONB
+            """)
+            
             # Migrate existing results from incentive_company_matches to incentives.top_5_companies
             cursor.execute("""
                 SELECT table_name FROM information_schema.tables 
@@ -306,6 +312,48 @@ class DatabaseManager:
             
             conn.commit()
             print(f"[DB] Saved {len(result.companies)} matching results to incentives.top_5_companies for incentive {result.incentive_id}")
+    
+    def save_scored_results(self, incentive_id: int, scored_companies: List[Dict], processing_time: float):
+        """
+        Save scored results to incentives.top_5_companies_scored column.
+        
+        Stores companies ranked by the Universal Company Match Formula score.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build JSON structure with scored companies
+            companies_data = []
+            for rank, company in enumerate(scored_companies, 1):
+                companies_data.append({
+                    "id": company['id'],
+                    "rank": rank,
+                    "company_score": company.get('company_score', 0),
+                    "semantic_score": company.get('rerank_score', 0),
+                    "score_components": company.get('score_components', {}),
+                    "name": company['name'],
+                    "cae_classification": company.get('cae'),
+                    "website": company.get('website'),
+                    "location_address": company.get('location_address'),
+                    "activities": company.get('activities', '')[:200] if company.get('activities') else None
+                })
+            
+            result_json = {
+                "companies": companies_data,
+                "processing_time": processing_time,
+                "processed_at": datetime.now().isoformat(),
+                "scoring_formula": "0.50S + 0.20M + 0.10G + 0.15O' + 0.05W"
+            }
+            
+            # Update incentives table with scored results
+            cursor.execute("""
+                UPDATE incentives 
+                SET top_5_companies_scored = %s 
+                WHERE incentive_id = %s
+            """, (json.dumps(result_json), incentive_id))
+            
+            conn.commit()
+            print(f"[DB] Saved {len(scored_companies)} scored results to incentives.top_5_companies_scored for incentive {incentive_id}")
 
 
 class LocationService:
@@ -325,8 +373,7 @@ class LocationService:
         self.db_manager = db_manager
         self.api_key = GOOGLE_MAPS_API_KEY
         self.memory_cache = {}  # Session-level cache
-        self.api_call_count = 0
-        self.max_api_calls_per_session = 100  # Safety limit
+        self.api_call_count = 0  # For monitoring only
     
     def get_company_location(self, company_id: int, company_name: str, 
                            existing_address: Optional[str] = None) -> CompanyLocation:
@@ -357,19 +404,10 @@ class LocationService:
             cached_location.api_status = 'cached'
             return cached_location
         
-        # Need to call API
-        if self.api_call_count >= self.max_api_calls_per_session:
-            print(f"[WARNING] API call limit reached ({self.max_api_calls_per_session})")
-            location = CompanyLocation(
-                company_id=company_id,
-                latitude=None,
-                longitude=None,
-                formatted_address=None,
-                api_status='api_limit_reached',
-                updated_at=datetime.now()
-            )
-        else:
-            location = self._call_google_maps_api(company_id, company_name, existing_address)
+        # Call Google Maps API
+        # Note: Google Maps has rate limits per minute (not per session)
+        # The API will return rate limit errors if exceeded, which we handle gracefully
+        location = self._call_google_maps_api(company_id, company_name, existing_address)
         
         # Cache the result
         self.memory_cache[company_id] = location
@@ -412,7 +450,7 @@ class LocationService:
         }
         
         try:
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=100)
             response.raise_for_status()
             data = response.json()
             
@@ -596,6 +634,232 @@ Return JSON only: {{"company_id": true/false, ...}}
 JSON:"""
 
 
+class CompanyScorer:
+    """
+    Calculates comprehensive company match scores using the Universal Company Match Formula.
+    
+    Formula: FINAL SCORE = 0.50S + 0.20M + 0.10G + 0.15O′ + 0.05W
+    
+    Where:
+    - S: Semantic Similarity (0-1)
+    - M: CAE/Activity Overlap (0-1)
+    - G: Geographic Fit (0, 0.5, or 1)
+    - O′: Contextual Organizational Fit (0-1)
+    - W: Website Presence (0 or 1)
+    
+    Uses GPT-5-mini to compute the final score based on the formula.
+    """
+    
+    def __init__(self):
+        self.client = openai_client
+    
+    def score_companies(self, companies: List[Dict], incentive: Dict, 
+                       semantic_scores: List[float]) -> List[Dict]:
+        """
+        Score companies using the Universal Company Match Formula.
+        
+        Args:
+            companies: List of company dictionaries with all data
+            incentive: Incentive dictionary with context
+            semantic_scores: List of semantic similarity scores from reranker
+            
+        Returns:
+            List of companies with added 'company_score' field
+        """
+        print(f"\n[SCORING] Calculating company scores for {len(companies)} companies...")
+        
+        # Normalize semantic scores to [0, 1]
+        s_scores = self._normalize_scores(semantic_scores)
+        
+        # Prepare scoring data for each company
+        scoring_data = []
+        for i, company in enumerate(companies):
+            data = {
+                'company_id': company['id'],
+                's': s_scores[i],
+                'm': self._calculate_cae_overlap(company, incentive),
+                'g': self._calculate_geographic_fit(company),
+                'o': self._calculate_org_capacity(company),
+                'org_direction': self._determine_org_direction(incentive),
+                'w': 1 if company.get('website') and company['website'] != 'N/A' else 0
+            }
+            scoring_data.append(data)
+        
+        # Call GPT-5-mini to compute final scores
+        final_scores = self._compute_scores_with_llm(scoring_data)
+        
+        # Add scores to companies
+        for i, company in enumerate(companies):
+            company['company_score'] = final_scores.get(company['id'], 0.0)
+            company['score_components'] = scoring_data[i]
+        
+        print(f"[SCORING] Completed scoring for {len(companies)} companies")
+        return companies
+    
+    def _normalize_scores(self, scores: List[float]) -> List[float]:
+        """Normalize scores to [0, 1] range."""
+        if not scores or len(scores) == 1:
+            return [1.0] * len(scores)
+        
+        min_score = min(scores)
+        max_score = max(scores)
+        
+        if max_score == min_score:
+            return [1.0] * len(scores)
+        
+        return [(s - min_score) / (max_score - min_score) for s in scores]
+    
+    def _calculate_cae_overlap(self, company: Dict, incentive: Dict) -> float:
+        """
+        Calculate Jaccard similarity between incentive keywords and company CAE/activities.
+        """
+        # Extract keywords from incentive
+        incentive_text = f"{incentive.get('sector', '')} {incentive.get('eligible_actions', '')}"
+        incentive_keywords = set(incentive_text.lower().split())
+        
+        # Extract keywords from company
+        company_text = f"{company.get('cae_label', '')} {company.get('activities', '')}"
+        company_keywords = set(company_text.lower().split())
+        
+        # Remove common stop words
+        stop_words = {'de', 'da', 'do', 'e', 'a', 'o', 'para', 'com', 'em', 'por', 'the', 'and', 'or', 'of', 'to', 'in'}
+        incentive_keywords -= stop_words
+        company_keywords -= stop_words
+        
+        # Calculate Jaccard similarity
+        if not incentive_keywords or not company_keywords:
+            return 0.0
+        
+        intersection = len(incentive_keywords & company_keywords)
+        union = len(incentive_keywords | company_keywords)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _calculate_geographic_fit(self, company: Dict) -> float:
+        """
+        Calculate geographic fit based on location status.
+        """
+        # Check if company passed geographic eligibility
+        if company.get('geo_eligible'):
+            return 1.0
+        elif company.get('location_api_status') == 'success':
+            return 0.0  # Has location but not eligible
+        else:
+            return 0.5  # Unknown location
+    
+    def _calculate_org_capacity(self, company: Dict) -> float:
+        """
+        Calculate organizational capacity based on legal form.
+        """
+        name = company.get('name', '').upper()
+        
+        # Check for different legal forms
+        if 'S.A.' in name or 'SA ' in name:
+            return 1.00
+        elif any(term in name for term in ['COOPERATIVA', 'ASSOCIAÇÃO', 'FUNDAÇÃO', 'MISERICÓRDIA', 'CENTRO SOCIAL']):
+            return 1.00
+        elif 'SGPS' in name:
+            return 0.60
+        elif 'UNIPESSOAL' in name:
+            return 0.40
+        elif 'LDA' in name or 'LTD' in name:
+            return 0.70
+        else:
+            return 0.50  # Unknown
+    
+    def _determine_org_direction(self, incentive: Dict) -> int:
+        """
+        Determine organizational direction preference from incentive.
+        
+        Returns:
+            +1: Prefers large/institutional companies
+            -1: Prefers small/startups
+             0: Prefers social/nonprofit
+        """
+        # Analyze incentive text for clues
+        text = f"{incentive.get('title', '')} {incentive.get('sector', '')} {incentive.get('eligible_actions', '')}".lower()
+        
+        # Check for social/nonprofit indicators
+        social_keywords = ['associação', 'cooperativa', 'social', 'nonprofit', 'terceiro setor', 'ipss']
+        if any(keyword in text for keyword in social_keywords):
+            return 0
+        
+        # Check for small business indicators
+        small_keywords = ['pme', 'pequena', 'micro', 'startup', 'empreendedor']
+        if any(keyword in text for keyword in small_keywords):
+            return -1
+        
+        # Check for large company indicators
+        large_keywords = ['grande empresa', 'multinacional', 'corporação', 's.a.']
+        if any(keyword in text for keyword in large_keywords):
+            return 1
+        
+        # Default: neutral (slightly favor large companies for institutional incentives)
+        if 'administração pública' in text or 'governo' in text:
+            return 1
+        
+        return 0  # Neutral default
+    
+    def _compute_scores_with_llm(self, scoring_data: List[Dict]) -> Dict[int, float]:
+        """
+        Use GPT-5-mini to compute final scores using the formula.
+        """
+        print(f"[SCORING] Computing final scores with GPT-5-mini...")
+        
+        # Create prompt
+        prompt = self._create_scoring_prompt(scoring_data)
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-5-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=4000
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            # Extract JSON
+            json_start = result_text.find('{')
+            json_end = result_text.rfind('}') + 1
+            
+            if json_start >= 0 and json_end > json_start:
+                json_text = result_text[json_start:json_end]
+                scores = json.loads(json_text)
+                
+                # Convert string keys to integers
+                return {int(k): float(v) for k, v in scores.items()}
+            else:
+                print(f"[SCORING] No JSON found in response")
+                return {}
+                
+        except Exception as e:
+            print(f"[SCORING] Error computing scores: {e}")
+            return {}
+    
+    def _create_scoring_prompt(self, scoring_data: List[Dict]) -> str:
+        """
+        Create prompt for GPT-5-mini to compute scores.
+        """
+        companies_json = json.dumps(scoring_data, indent=2)
+        
+        return f"""Calculate final company match scores using this formula:
+
+FINAL SCORE = 0.50*S + 0.20*M + 0.10*G + 0.15*O' + 0.05*W
+
+Where O' (contextual org fit) is calculated as:
+- If org_direction = +1: O' = O
+- If org_direction = -1: O' = 1 - O  
+- If org_direction = 0: O' = 1 if O >= 0.9, else 0.5
+
+Input data:
+{companies_json}
+
+Return JSON only with company_id as key and final_score as value:
+{{"company_id": final_score, ...}}
+
+JSON:"""
+
+
 # Import existing functions from test_incentive_matching.py
 def get_random_incentive():
     """Get a random incentive for testing."""
@@ -642,9 +906,35 @@ def get_random_incentive():
 
 
 def create_search_query(incentive):
-    """Create search query from incentive data."""
-    query = f"{incentive['sector']} {incentive['eligible_actions']}"
-    print(f"\n[QUERY] Search query: {query}")
+    """
+    Create search query from incentive data.
+    
+    Combines sector, ai_description, and eligible_actions to match
+    the semantic richness of company embeddings (name + CAE + description).
+    
+    This SOTA-backed approach uses full descriptions rather than just keywords,
+    providing better semantic matching between incentives and companies.
+    """
+    # Build query with all semantic information
+    query_parts = []
+    
+    if incentive.get('sector'):
+        query_parts.append(incentive['sector'])
+    
+    if incentive.get('ai_description'):
+        query_parts.append(incentive['ai_description'])
+    
+    if incentive.get('eligible_actions'):
+        query_parts.append(incentive['eligible_actions'])
+    
+    query = " ".join(query_parts)
+    
+    print(f"\n[QUERY] Search query components:")
+    print(f"  - Sector: {incentive.get('sector', 'N/A')}")
+    print(f"  - AI Description: {incentive.get('ai_description', 'N/A')[:100]}...")
+    print(f"  - Eligible Actions: {incentive.get('eligible_actions', 'N/A')[:100]}...")
+    print(f"  - Total query length: {len(query)} characters")
+    
     return [query]
 
 
@@ -792,6 +1082,7 @@ class EnhancedMatchingPipeline:
         self.db_manager = DatabaseManager()
         self.location_service = LocationService(self.db_manager)
         self.geo_analyzer = GeographicAnalyzer()
+        self.company_scorer = CompanyScorer()
         
         # Load models
         self.embedding_model = load_embedding_model()
@@ -800,7 +1091,7 @@ class EnhancedMatchingPipeline:
         # Ensure database schema
         self.db_manager.ensure_schema()
     
-    def find_matching_companies(self, incentive: Dict, max_candidates: int = 30) -> MatchingResult:
+    def find_matching_companies(self, incentive: Dict, max_candidates: int = 50) -> MatchingResult:
         """
         Find companies that match both semantic and geographic criteria.
         
@@ -825,8 +1116,8 @@ class EnhancedMatchingPipeline:
         queries = create_search_query(incentive)
         query = queries[0]
         
-        # Try with 20 candidates first, then 30 if needed
-        candidates_to_try = 20
+        # Start with 10 candidates, then increment by 10 up to max_candidates
+        candidates_to_try = 10
         
         while candidates_to_try <= max_candidates:
             print(f"\n[PIPELINE] Searching with {candidates_to_try} candidates...")
@@ -871,38 +1162,58 @@ class EnhancedMatchingPipeline:
             print(f"\n[PIPELINE] {eligible_count} companies meet geographic requirements")
             
             # Decision logic
-            if eligible_count <= 5:
-                if eligible_count == 5 or candidates_to_try >= max_candidates:
-                    # We have exactly 5, or we've tried maximum candidates
-                    final_companies = eligible_companies
-                    break
-                else:
-                    # Too few eligible companies, expand search
-                    print(f"[PIPELINE] Only {eligible_count} eligible companies found, expanding to 30...")
-                    candidates_to_try = 30
-                    continue
-            else:
-                # More than 5 eligible companies, take top 5 by rerank score
+            if eligible_count >= 5:
+                # We have 5 or more eligible companies, take top 5 by rerank score
                 final_companies = sorted(
                     eligible_companies, 
                     key=lambda x: x['rerank_score'], 
                     reverse=True
                 )[:5]
                 break
+            elif candidates_to_try >= max_candidates:
+                # We've reached the maximum, return what we have (even if < 5)
+                final_companies = eligible_companies
+                break
+            else:
+                # Too few eligible companies, expand search by 10
+                print(f"[PIPELINE] Only {eligible_count} eligible companies found, expanding by 10...")
+                candidates_to_try += 10
+                continue
         
-        # Create result object
+        # Stage 5: Calculate company scores using Universal Formula
+        print(f"\n[PIPELINE] Calculating comprehensive company scores...")
+        
+        # Get semantic scores for scoring
+        semantic_scores = [c['rerank_score'] for c in final_companies]
+        
+        # Add geo_eligible flag for scoring
+        for company in final_companies:
+            company['geo_eligible'] = True  # All final companies are geo-eligible
+        
+        # Score companies
+        scored_companies = self.company_scorer.score_companies(final_companies, incentive, semantic_scores)
+        
+        # Sort by company_score for the scored results
+        scored_companies_sorted = sorted(
+            scored_companies,
+            key=lambda x: x.get('company_score', 0),
+            reverse=True
+        )
+        
+        # Create result object (with original semantic ranking)
         processing_time = time.time() - start_time
         result = MatchingResult(
             incentive_id=incentive['id'],
-            companies=final_companies,
+            companies=final_companies,  # Keep original semantic ranking
             total_candidates_searched=candidates_to_try,
             geographic_eligible_count=len(final_companies),
             processing_time=processing_time,
             created_at=datetime.now()
         )
         
-        # Save results to database
+        # Save both results to database
         self.db_manager.save_matching_results(result)
+        self.db_manager.save_scored_results(incentive['id'], scored_companies_sorted, processing_time)
         
         print(f"\n[PIPELINE] Matching completed in {processing_time:.2f} seconds")
         print(f"[PIPELINE] Final result: {len(final_companies)} companies")

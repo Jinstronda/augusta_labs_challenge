@@ -19,11 +19,18 @@ import psycopg2
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Get the project root directory (parent of scripts/)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
+
+# Change to project root to ensure relative paths work
+os.chdir(PROJECT_ROOT)
+
+# Load environment variables BEFORE importing
+load_dotenv('config.env')
+
 # Import our enhanced matching system
 from enhanced_incentive_matching import EnhancedMatchingPipeline, DatabaseManager
-
-# Load environment variables
-load_dotenv('config.env')
 
 # Database configuration
 DB_NAME = os.getenv("DB_NAME", "incentives_db")
@@ -55,12 +62,13 @@ def get_all_processable_incentives(start_from=None, limit=None):
     # Build query with optional filters
     query = """
         SELECT incentive_id, title, sector, geo_requirement, 
-               eligible_actions, funding_rate, investment_eur,
+               ai_description, eligible_actions, funding_rate, investment_eur,
                top_5_companies
         FROM incentives
         WHERE sector IS NOT NULL 
         AND eligible_actions IS NOT NULL 
         AND geo_requirement IS NOT NULL
+        AND ai_description IS NOT NULL
     """
     
     params = []
@@ -84,9 +92,10 @@ def get_all_processable_incentives(start_from=None, limit=None):
     for row in results:
         incentive = {
             'id': row[0], 'title': row[1], 'sector': row[2],
-            'geo_requirement': row[3], 'eligible_actions': row[4],
-            'funding_rate': row[5], 'investment_eur': row[6],
-            'already_processed': row[7] is not None  # Has top_5_companies data
+            'geo_requirement': row[3], 'ai_description': row[4],
+            'eligible_actions': row[5], 'funding_rate': row[6], 
+            'investment_eur': row[7],
+            'already_processed': row[8] is not None  # Has top_5_companies data
         }
         
         if incentive['already_processed']:

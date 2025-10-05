@@ -1,0 +1,88 @@
+{
+  "test_number": 4,
+  "timestamp": "2025-10-05T22:32:06.710914",
+  "incentive": {
+    "id": "1327",
+    "title": "07. Reforço de Atuação das Organizações de produtores florestais (Aviso 07/C08-i05.02/2024)",
+    "sector": "Florestas / Organizações de Produtores Florestais",
+    "geo_requirement": "Portugal Continental",
+    "eligible_actions": "Contratação de recursos humanos qualificados, elaboração de planos de fogo controlado e campanhas de sensibilização"
+  },
+  "processing": {
+    "total_candidates_searched": 10,
+    "geographic_eligible_count": 5,
+    "processing_time_seconds": 48.130560636520386,
+    "companies_found": 5
+  },
+  "outcome": {
+    "status": "success",
+    "companies_returned": 5,
+    "max_semantic_score": 0.24544655698700496,
+    "min_semantic_score": 0.12043881659461604,
+    "avg_semantic_score": 0.1598425851632396
+  },
+  "companies": [
+    {
+      "rank": 1,
+      "id": 182184,
+      "name": "COFLORPENA - CONSULTORIA E OPERAÇÕES FLORESTAIS, LDA",
+      "semantic_score": 0.24544655698700496,
+      "cae_classification": "Silviculture and other forestry activities",
+      "location_address": "R. das Glicínias, 2665-550 Venda do Pinheiro",
+      "website": null,
+      "activities_preview": "Atividades dos serviços relacionados com a silvicultura e exploração florestal, preparação de terrenos, plantações, sementeiras, inventário florestal,..."
+    },
+    {
+      "rank": 2,
+      "id": 8319,
+      "name": "PAULO JORGE ALMEIDA E SILVA, UNIPESSOAL, LDA",
+      "semantic_score": 0.17455093958035406,
+      "cae_classification": "Logging",
+      "location_address": "Av. Santo António no 79, 4720-027 Ferreiros",
+      "website": null,
+      "activities_preview": "Exploração florestal e corte de madeira. Silvicultura e outras atividade florestais, tais como: recolha, preparação e conservação de sementes de espéc..."
+    },
+    {
+      "rank": 3,
+      "id": 245759,
+      "name": "FLORESTGAL - EMPRESA DE GESTÃO E DESENVOLVIMENTO FLORESTAL, S.A.",
+      "semantic_score": 0.1347759174229568,
+      "cae_classification": "Support services to forestry",
+      "location_address": "Av. Comendador Joaquim Araújo Lacerda 16 18, 3260-412 Figueiró dos Vinhos",
+      "website": "www.florestgal.pt",
+      "activities_preview": "A sociedade tem por objeto o planeamento, promoção, desenvolvimento e gestão de projetos no âmbito das atividades florestais, silvo-pastoris e relacio..."
+    },
+    {
+      "rank": 4,
+      "id": 171066,
+      "name": "RIBAFLORESTA - SERVIÇOS FLORESTAIS, LDA",
+      "semantic_score": 0.12400069523126614,
+      "cae_classification": "Logging",
+      "location_address": "Avenida D. José 1.º, n - Lamego, Portugal, º 64, 5100-891 Arneirós",
+      "website": null,
+      "activities_preview": "Abate de árvores, toragem, descasque - rechega, produção de lenha e produção não industrial de carvão vegetal. Silvicultura e exploração florestal, pr..."
+    },
+    {
+      "rank": 5,
+      "id": 133139,
+      "name": "ILÍDIO DIAS DUARTE, UNIPESSOAL, LDA",
+      "semantic_score": 0.12043881659461604,
+      "cae_classification": "Support services to forestry",
+      "location_address": "Praceta Luís Ludovice 2720, Damaia, 2720-083 Amadora",
+      "website": null,
+      "activities_preview": "Serviços de silvicultura e exploração florestal, preparação de terrenos, inventário florestal, execução de avaliações da produção florestal, vigilânci..."
+    }
+  ],
+  "processing_log": [
+    {
+      "step": "start",
+      "timestamp": "2025-10-05T22:31:18.537067",
+      "message": "Starting processing for incentive 1327"
+    },
+    {
+      "step": "complete",
+      "timestamp": "2025-10-05T22:32:06.709913",
+      "message": "Processing completed in 48.2 seconds"
+    }
+  ]
+}

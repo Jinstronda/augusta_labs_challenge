@@ -1,0 +1,88 @@
+{
+  "test_number": 1,
+  "timestamp": "2025-10-05T22:26:32.258035",
+  "incentive": {
+    "id": "2270",
+    "title": "SITCE – Descarbonização e eficiência energética",
+    "sector": "Descarbonização e Eficiência Energética / Empresas e Entidades Públicas e Privadas",
+    "geo_requirement": "Centro, Algarve, Alentejo e Norte",
+    "eligible_actions": "Projetos de descarbonização, eficiência energética e transição energética para sustentabilidade empresarial"
+  },
+  "processing": {
+    "total_candidates_searched": 10,
+    "geographic_eligible_count": 5,
+    "processing_time_seconds": 81.25096487998962,
+    "companies_found": 5
+  },
+  "outcome": {
+    "status": "success",
+    "companies_returned": 5,
+    "max_semantic_score": 0.5417422158291983,
+    "min_semantic_score": 0.024750971173211157,
+    "avg_semantic_score": 0.27343692699237054
+  },
+  "companies": [
+    {
+      "rank": 1,
+      "id": 75369,
+      "name": "I-VINTE E DOIS, UNIPESSOAL, LDA",
+      "semantic_score": 0.5417422158291983,
+      "cae_classification": "Engineering activities and related technical consultancy",
+      "location_address": "R. das Faias 3, 2590-404",
+      "website": null,
+      "activities_preview": "Implementação e desenvolvimento de projectos de eficiência energética. Produção e venda de energia de fontes renováveis, comercialização e instalação ..."
+    },
+    {
+      "rank": 2,
+      "id": 15441,
+      "name": "VILA DO CONDE SMARTLIGHT, LDA",
+      "semantic_score": 0.5365861046569221,
+      "cae_classification": "Engineering activities and related technical consultancy",
+      "location_address": "Zona Industrial da, R. D 29, 4480-622 Árvore",
+      "website": null,
+      "activities_preview": "Implementação e desenvolvimento de projetos de eficiência energética. Produção e venda de energia de fontes renováveis, comercialização e instalação d..."
+    },
+    {
+      "rank": 3,
+      "id": 16384,
+      "name": "ENERGIAS RENOVÁVEIS FAFEBASTO, LDA",
+      "semantic_score": 0.13568954596860924,
+      "cae_classification": "Engineering activities and related technical consultancy",
+      "location_address": "R. do Retiro 95, 4820-239 Fafe",
+      "website": "www.erf.pt",
+      "activities_preview": "Produção e comercialização de energia designadamente energias renováveis. Fabrico, comércio, importação, exportação, instalação, reparação e manutençã..."
+    },
+    {
+      "rank": 4,
+      "id": 232856,
+      "name": "ALFA ENERGIA, LDA",
+      "semantic_score": 0.12841579733391206,
+      "cae_classification": "Trade of electricity",
+      "location_address": "Rua dos Pinheirinhos, Edíficio Gian, R/C, 3750-064",
+      "website": "www.alfaenergia.pt",
+      "activities_preview": "Comércio de eletricidade e comércio de gás por condutas. Produção de energia elétrica e térmica, por via renovável. Realização de projetos, execução, ..."
+    },
+    {
+      "rank": 5,
+      "id": 12582,
+      "name": "ENERGIDÃO, UNIPESSOAL, LDA",
+      "semantic_score": 0.024750971173211157,
+      "cae_classification": "Plumbing, heat installation",
+      "location_address": "R. da Ínsua 19, 3505-563 Rio de Loba",
+      "website": null,
+      "activities_preview": "Instalação de redes de gás, elétricas, telefónicas, água, microgeração e energias renováveis. Montagem e manutenção de equipamentos de microgeração e ..."
+    }
+  ],
+  "processing_log": [
+    {
+      "step": "start",
+      "timestamp": "2025-10-05T22:25:10.967227",
+      "message": "Starting processing for incentive 2270"
+    },
+    {
+      "step": "complete",
+      "timestamp": "2025-10-05T22:26:32.257032",
+      "message": "Processing completed in 81.3 seconds"
+    }
+  ]
+}

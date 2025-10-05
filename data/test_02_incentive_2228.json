@@ -1,0 +1,37 @@
+{
+  "test_number": 2,
+  "timestamp": "2025-10-05T22:30:39.239607",
+  "incentive": {
+    "id": "2228",
+    "title": "Qualificação de pessoas com deficiência e ou incapacidade II",
+    "sector": "Inclusão Social / Emprego / Administração Pública",
+    "geo_requirement": "RAM",
+    "eligible_actions": "Qualificação, formação e integração laboral de pessoas com deficiência e/ou incapacidade; promoção da inclusão ativa e empregabilidade (candidaturas individuais por convite)"
+  },
+  "processing": {
+    "total_candidates_searched": 50,
+    "geographic_eligible_count": 0,
+    "processing_time_seconds": 244.92816734313965,
+    "companies_found": 0
+  },
+  "outcome": {
+    "status": "no_companies_found",
+    "companies_returned": 0,
+    "max_semantic_score": 0,
+    "min_semantic_score": 0,
+    "avg_semantic_score": 0
+  },
+  "companies": [],
+  "processing_log": [
+    {
+      "step": "start",
+      "timestamp": "2025-10-05T22:26:34.259614",
+      "message": "Starting processing for incentive 2228"
+    },
+    {
+      "step": "complete",
+      "timestamp": "2025-10-05T22:30:39.238607",
+      "message": "Processing completed in 245.0 seconds"
+    }
+  ]
+}

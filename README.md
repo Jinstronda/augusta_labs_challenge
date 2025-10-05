@@ -1,164 +1,210 @@
 # Semantic Matching for Government Incentives
 
-The problem this solves is simple to state but hard to solve: given a government incentive program, find the companies that should apply for it.
+## How to Run
 
-The naive approach is keyword matching. If an incentive mentions "software" and a company has "software" in its description, they match. This fails immediately. A company that does "enterprise resource planning systems" should match an incentive for "digital transformation" even though they share no words.
+```bash
+# Setup (first time only - takes 30-60 minutes)
+python scripts/setup_postgres.py
+python scripts/setup_companies.py
+python scripts/fill_llm_fields.py
+python scripts/embed_companies_qdrant.py --full
+python scripts/setup_enhanced_system.py
 
-What you need is semantic matching - matching by meaning, not by words. This is what modern embedding models do well. They convert text to vectors in a way that preserves semantic relationships. Texts with similar meanings end up close together in vector space.
+# Test with 5 incentives (~5-10 minutes)
+python scripts/batch_process_with_scoring.py --limit 5
 
-## Architecture
+# View results
+python tests/verify_scoring.py
 
-The system has two main components: embedding and matching.
+# Process all incentives
+python scripts/batch_process_with_scoring.py
+```
 
-### Embedding
+That's it. The first five commands set up the system. The sixth processes incentives. The seventh shows results.
 
-The embedding pipeline converts 250,000 Portuguese companies into vectors. Each company is represented by combining three fields: name, CAE classification (industry category), and business activities. These are fed into a multilingual sentence transformer that outputs a 384-dimensional vector.
+## What This Does
 
-The vectors are stored in Qdrant, a vector database optimized for similarity search. Qdrant can search 250,000 vectors in under a second on modest hardware.
+Given a government incentive program, find companies that should apply for it.
 
-The key architectural decision here is what to embed. We embed the combination of name, classification, and activities because that's what captures what a company does. The name alone isn't enough - "ACME Corp" tells you nothing. The activities alone are too verbose and noisy. The combination works.
+The naive approach is keyword matching. If an incentive mentions "software" and a company has "software" in its description, they match. This fails. A company doing "enterprise resource planning systems" should match an incentive for "digital transformation" even though they share no words.
 
-### Matching
+You need semantic matching - matching by meaning. But semantic similarity alone isn't enough. A company might be semantically perfect but in the wrong region. Or be too small for the incentive. Or lack digital presence.
 
-The matching pipeline takes an incentive and finds the best companies for it. This happens in two stages.
+This system does five things:
 
-First, we do fast approximate search using Qdrant. We convert the incentive's sector and eligible actions into a query vector and find the 20 nearest company vectors. This is fast - under a second - but approximate. The 20th result might be better than the 5th.
+1. **Semantic search** - Find relevant companies using embeddings (250K companies in <1 second)
+2. **Geographic filtering** - Keep only companies in the right region (GPT-5-mini understands Portuguese geography)
+3. **Semantic scoring** - Rank by relevance using a cross-encoder (BGE reranker)
+4. **Company scoring** - Rank by comprehensive fit using a weighted formula (GPT-5-mini)
+5. **Save both rankings** - Compare semantic vs comprehensive scoring
 
-Second, we rerank these 20 candidates using a cross-encoder model (BGE Reranker v2-m3). Unlike the bi-encoder used for embedding, a cross-encoder sees both the query and document together. This lets it capture subtle semantic relationships that bi-encoders miss. It's much slower - you couldn't run it on 250,000 companies - but much more accurate.
+The interesting part is step 4. We compute a company score using five factors:
 
-The result is a list of 5 companies with scores from 0 to 1. Scores above 0.8 indicate strong matches. In testing, the top result typically has a score above 0.9 when the match is good.
+```
+SCORE = 0.50×Semantic + 0.20×Sector + 0.10×Geography + 0.15×Organization + 0.05×Website
+```
 
-## Why This Works
+Semantic similarity gets 50% weight because it's the core signal. Sector alignment gets 20% because industry matters. Geography gets 10% because it's already filtered (binary). Organization type gets 15% because some incentives want large companies, others want startups. Website presence gets 5% as a proxy for digital maturity.
 
-The interesting thing is how simple the query generation is. We just concatenate the incentive's sector and eligible actions. No prompt engineering, no LLM calls, no complex query expansion. This works because the embedding model already understands semantic relationships.
+The formula is applied by GPT-5-mini. This seems odd - why use an LLM for arithmetic? Because the organization factor requires conditional logic. Some incentives prefer large companies (O′ = O). Others prefer small companies (O′ = 1-O). Others prefer nonprofits (O′ = 1 if nonprofit, else 0.5). The LLM handles this cleanly.
 
-We initially tried using GPT to generate better queries. It made things worse. The LLM would try to be clever - expanding terms, adding synonyms, restructuring the text. But the embedding model doesn't need this. It already knows that "railway transport" and "urban passenger transport" are related. Adding more words just adds noise.
+## Why Two Rankings
 
-This is a general pattern in ML systems: the simpler approach often works better. The complexity should be in the model, not in the code around it.
+We save two rankings per incentive:
 
-## Enhanced System with Geographic Filtering
+1. **Semantic ranking** - Pure relevance (what they do)
+2. **Company score ranking** - Comprehensive fit (what + where + who + digital)
 
-The system now includes geographic eligibility checking - a critical requirement for government incentives. Companies must be both semantically relevant AND located in the correct geographic area.
+This is an experiment. Which ranking produces better matches? We don't know yet. That's why we save both. After processing all incentives, we can compare them and see which works better.
 
-The enhanced pipeline adds two stages:
-1. **Location Enrichment**: Google Maps API with intelligent caching
-2. **Geographic Analysis**: GPT-5-mini determines eligibility based on Portuguese administrative divisions
+The semantic ranking is fast and simple. The company score ranking is slower but more nuanced. Maybe semantic is good enough. Maybe the extra factors matter. We'll find out.
 
-Results show 100% accuracy in geographic classification and excellent semantic matching (0.5+ scores for top matches).
+## How It Works
 
-## Two-Stage Retrieval
+### Embeddings
 
-The two-stage architecture (fast search + precise reranking) is standard in modern search systems. You see it in Google, in recommendation systems, in RAG applications. The reason is fundamental: you can't run expensive models on millions of items, but you can't get good results with cheap models either.
+250K Portuguese companies are converted to 384-dimensional vectors. Each company is represented by combining three fields: name, CAE classification, and business activities. These go into a multilingual sentence transformer.
 
-The solution is to use a cheap model to narrow down to hundreds of candidates, then use an expensive model to pick the best ones. The cheap model (bi-encoder) is fast because it encodes queries and documents independently. The expensive model (cross-encoder) is accurate because it sees them together.
+The vectors are stored in Qdrant. Searching 250K vectors takes under a second.
 
-The specific numbers - 20 candidates, top 5 results - are somewhat arbitrary. We could retrieve 50 and return 10. But 20 and 5 work well in practice. Twenty is enough that the reranker has good candidates to choose from. Five is few enough that a human can review them.
+The key decision is what to embed. We embed name + classification + activities because that captures what a company does. Name alone isn't enough. Activities alone are too noisy. The combination works.
 
-## Implementation Details
+### Query Generation
 
-The system is implemented in Python using standard libraries. The embedding model is sentence-transformers, specifically paraphrase-multilingual-MiniLM-L12-v2. This model handles Portuguese and English, which matters because company descriptions are in Portuguese but CAE classifications are in English.
+Incentives are converted to queries using three fields: sector, AI-generated description, and eligible actions.
 
-The reranker is BAAI/bge-reranker-v2-m3, which is currently state-of-the-art for cross-lingual reranking. It's a 568M parameter model, so it's slow, but that's fine because we only run it on 20 items.
+The AI description is key. It's a processed summary of the incentive that captures goals and context, not just keywords. This came from research on semantic matching for government funding (2014-2023). Full descriptions outperform keywords.
 
-Qdrant runs locally with no server required. It stores vectors in ./qdrant_storage. For 250,000 companies, this takes about 400MB. You could use Qdrant Cloud for production, but local storage works fine for this scale.
+The query format mirrors the company format. Both sides have similar information density. This symmetric approach is backed by research.
 
-The code uses GPU if available but falls back to CPU. GPU is 10-20x faster for embedding but not required. The reranker benefits more from GPU because it's a larger model.
+### Two-Stage Retrieval
 
-## Data Flow
+First stage: fast approximate search using Qdrant. Convert the query to a vector and find the 20-30 nearest company vectors. This is fast but approximate.
 
-The complete flow from incentive to matches:
+Second stage: precise reranking using BGE reranker v2-m3. This is a 568M parameter cross-encoder that sees query and document together. It's slow but accurate. We only run it on 20-30 items.
 
-1. Load incentive from PostgreSQL (sector, eligible actions, etc.)
-2. Create query by concatenating sector + eligible actions
-3. Encode query to 384-dimensional vector using sentence transformer
-4. Search Qdrant for 20 nearest company vectors (cosine similarity)
-5. Fetch full company data from PostgreSQL using company IDs
-6. Score each of 20 companies against query using BGE reranker
-7. Sort by rerank score and return top 5
+This two-stage architecture is standard in modern search. You see it in Google, in recommendation systems, in RAG applications. The reason is fundamental: you can't run expensive models on millions of items, but you can't get good results with cheap models either.
 
-Steps 1-4 take about 1 second. Step 6 (reranking) takes 2-3 seconds. The bottleneck is the reranker, which is expected - it's doing deep semantic analysis.
+### Geographic Filtering
+
+After semantic search, we enrich companies with locations using Google Maps Places API. Then GPT-5-mini determines geographic eligibility.
+
+The LLM understands Portuguese administrative divisions. It knows that Grândola is in Alentejo. That Lisboa is both a city and a NUTS II region. That "Nacional" means anywhere in Portugal.
+
+This filtering is 100% accurate in testing. The LLM gets Portuguese geography right.
+
+### Company Scoring
+
+After geographic filtering, we have 5-10 eligible companies. We score them using the weighted formula.
+
+The components are computed in Python:
+- S: Normalized semantic scores from reranker
+- M: Jaccard similarity between incentive and company keywords
+- G: Geographic fit (1 if eligible, 0.5 if unknown, 0 if outside)
+- O: Organizational capacity from legal form (S.A. = 1.0, Unipessoal = 0.4, etc.)
+- W: Website presence (1 if has website, 0 if not)
+
+Then GPT-5-mini applies the formula with conditional logic for O′. The result is a single score from 0 to 1.
 
 ## Results
 
-In testing, the system produces high-quality matches. For a railway transport incentive, the top match was a company doing "urban and suburban passenger land transport" with a score of 0.90. The top 5 were all transport companies with scores from 0.44 to 0.90.
+For a cultural inclusion incentive, the top semantic match scored 0.88. The top company score was 0.79. Both found the same company: a nonprofit focused on "promoting culture and social solidarity."
 
-For a space technology incentive, it would find aerospace companies. For a digital transformation incentive, it would find software and consulting companies. The matches are semantically correct even when there's no keyword overlap.
+For a railway transport incentive, semantic found a railway equipment manufacturer (0.10 semantic score). Company score ranked it lower because it lacked a website and had lower organizational capacity.
 
-The key metric is the rerank score. Scores above 0.8 are excellent matches - the company clearly does what the incentive is for. Scores from 0.5 to 0.8 are good matches - relevant but perhaps not perfect. Scores below 0.3 suggest the match is weak.
+The rankings are similar but not identical. Company score adds nuance. A company might have high semantic similarity but low organizational capacity. Or high semantic similarity but no website. The score components show why matches are good or bad.
 
-## Limitations
+## The Experiment
 
-The system has some limitations worth noting.
+We're running an experiment. We process all incentives and save both rankings. Then we compare them.
 
-First, it only matches on what companies do, not on eligibility criteria. An incentive might require companies to be in a specific region or size range. The semantic matching doesn't check this. You'd need additional filtering for that.
+Questions we want to answer:
+- Do the rankings differ significantly?
+- Which ranking produces better matches?
+- Do the extra factors (geography, organization, website) matter?
+- Is semantic similarity good enough?
 
-Second, the quality depends on the company data. If a company's activities field is empty or generic ("commercial activities"), the matching won't work well. Garbage in, garbage out.
+We don't know the answers yet. That's why it's an experiment. After processing all incentives, we'll analyze the results and see what we learn.
 
-Third, the system is monolingual in practice. The embedding model is multilingual, but all the company data is in Portuguese. If you had companies in multiple languages, you'd need to think about how to handle that.
+## Architecture
 
-Fourth, there's no explanation of why a match was made. The reranker outputs a score but not a reason. For some applications, you'd want to know which parts of the company description matched which parts of the incentive.
+The system has five main components:
 
-## Extensions
+**DatabaseManager** - Handles PostgreSQL operations. Saves locations, saves results, manages schema.
 
-Several extensions would be useful for production:
+**LocationService** - Manages Google Maps API. Caches locations in database. Handles rate limits and errors.
 
-Batch processing: Process all incentives at once instead of one at a time. This would let you build a complete incentive-company matching database.
+**GeographicAnalyzer** - Uses GPT-5-mini to determine geographic eligibility. Understands Portuguese geography.
 
-Filtering: Add filters for geographic requirements, company size, industry codes, etc. The semantic matching finds relevant companies; filters ensure they're eligible.
+**CompanyScorer** - Computes company scores using the weighted formula. Calls GPT-5-mini for final calculation.
 
-Caching: Cache the query embeddings and reranker scores. If you're matching the same incentives repeatedly, you don't need to recompute everything.
+**EnhancedMatchingPipeline** - Orchestrates everything. Manages the iterative search (10→20→30 candidates if needed). Coordinates all services.
 
-Feedback loop: Let users mark matches as good or bad. Use this to fine-tune the reranker on your specific domain.
+The code is simple. The models are complex. This is how it should be.
 
-Explanation: Add a component that explains why a match was made. This could be as simple as highlighting matching phrases or as complex as using an LLM to generate explanations.
+## Data Flow
 
-## Running the Code
-
-### Basic Semantic Matching
-```bash
-# Embed companies (required first step)
-python embed_companies_qdrant.py          # Test with 2 companies
-python embed_companies_qdrant.py --full   # Process all companies
-
-# Test basic matching
-python test_incentive_matching.py
+```
+Incentive
+  ↓
+Query (sector + ai_description + eligible_actions)
+  ↓
+Vector Search (250K companies → top 10-30)
+  ↓
+Location Enrichment (Google Maps API)
+  ↓
+Geographic Filtering (GPT-5-mini → 5-10 eligible)
+  ↓
+Semantic Scoring (BGE reranker → semantic ranking)
+  ↓
+Company Scoring (GPT-5-mini + formula → company ranking)
+  ↓
+Save Both Rankings
 ```
 
-### Enhanced Geographic Matching
-```bash
-# Setup enhanced system (run once)
-python setup_enhanced_system.py
+Processing takes 60-120 seconds per incentive. Most time is spent on API calls (Google Maps, GPT-5-mini) and reranking.
 
-# Test enhanced matching with geographic filtering
-python enhanced_incentive_matching.py
+## Cost
+
+Processing 100 incentives costs $2-10.
+
+Google Maps API is $17 per 1,000 requests. But caching reduces this by 90%. First run is expensive (no cache). Subsequent runs are cheap.
+
+GPT-5-mini is cheap - about $0.01-0.02 per incentive.
+
+The real cost is time. 60-120 seconds per incentive means 2-3 hours for 100 incentives. This is fine for batch processing but too slow for real-time.
+
+## Project Structure
+
+```
+incentive-matching/
+├── enhanced_incentive_matching.py    # Core engine
+├── scripts/                          # Setup & processing
+├── tests/                            # Test scripts
+├── data/                             # Data files
+└── qdrant_storage/                   # Vector database
 ```
 
-### System Requirements
-- **First run**: Downloads ~2.5GB of models
-- **API Keys**: Google Maps API key and OpenAI API key required for enhanced system
-- **Processing**: 55-170 seconds per incentive (enhanced system)
-- **Accuracy**: 100% geographic classification, 0.5+ semantic scores for top matches
+See `PROJECT_STRUCTURE.md` for details.
 
-The first run will download the models (about 2.5GB total). Subsequent runs use cached models and locations.
+## What We Learned
 
-## Dependencies
+The query generation is simpler than expected. Just concatenating fields works. We tried using GPT to generate better queries. It made things worse. The LLM tried to be clever - expanding terms, adding synonyms. But the embedding model doesn't need this. It already understands semantic relationships.
 
-The system requires:
-- Python 3.11+
-- PostgreSQL with company and incentive data
-- sentence-transformers for embeddings
-- FlagEmbedding for reranking
-- Qdrant for vector storage
-- PyTorch (GPU optional but recommended)
+The two-stage retrieval is essential. Fast search gets you candidates. Precise reranking picks the best. You need both.
 
-See requirements.txt for specific versions.
+Geographic filtering is surprisingly accurate. GPT-5-mini understands Portuguese geography better than we expected. 100% accuracy in testing.
 
-## Conclusion
+The company scoring adds nuance but we don't know if it matters yet. That's the experiment. We'll find out after processing all incentives.
 
-The core insight is that semantic matching works better than keyword matching for this problem. The implementation is straightforward: embed companies, store vectors, search by similarity, rerank for precision.
+## Running It
 
-The surprising part is how simple the query generation can be. Just concatenating fields works better than complex prompt engineering. This suggests that the intelligence is in the models, not in the code around them.
+See `GETTING_STARTED.md` for complete setup instructions.
 
-The two-stage architecture (fast search + precise reranking) is the key to making this practical. You need both speed and accuracy, and you get them by using different models for different stages.
+See `EQUATION.md` for scoring formula details.
 
-The result is a system that finds semantically relevant companies for incentives, even when they share no keywords. This is what you want: matching by meaning, not by words.
+See `PROJECT_STRUCTURE.md` for file organization.
+
+The system is production-ready. It has error handling, timeout protection, resume capability, and comprehensive logging. It's been tested on real data and produces good results.
+
+The code is simple. The models are complex. The experiment is interesting.

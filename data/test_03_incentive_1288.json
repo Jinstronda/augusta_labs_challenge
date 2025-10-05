@@ -1,0 +1,88 @@
+{
+  "test_number": 3,
+  "timestamp": "2025-10-05T22:31:16.534338",
+  "incentive": {
+    "id": "1288",
+    "title": "02. Investimento RE-C04-i01 - Redes Culturais e Transição Digital (Aviso N.º 02/C04-i01/2021)",
+    "sector": "Cultura / Administração Pública",
+    "geo_requirement": "Portugal",
+    "eligible_actions": "Digitalização e virtualização de cerca de 19,5 milhões de documentos; modernização de infraestruturas e processos para preservação, acessibilidade e gestão digital do património documental"
+  },
+  "processing": {
+    "total_candidates_searched": 10,
+    "geographic_eligible_count": 5,
+    "processing_time_seconds": 35.23853397369385,
+    "companies_found": 5
+  },
+  "outcome": {
+    "status": "success",
+    "companies_returned": 5,
+    "max_semantic_score": 0.23598761273422394,
+    "min_semantic_score": 0.0008592476587280132,
+    "avg_semantic_score": 0.05870689312027046
+  },
+  "companies": [
+    {
+      "rank": 1,
+      "id": 4227,
+      "name": "RASTERGEN - GESTÃO DOCUMENTAL, UNIPESSOAL, LDA",
+      "semantic_score": 0.23598761273422394,
+      "cae_classification": "Archives activities",
+      "location_address": "Centro Empresarial Sintra-Estoril, Av. Pedro Álvares Cabral 177 Arm. Q, Linhó, 2710-297 Sintra",
+      "website": null,
+      "activities_preview": "Prestação de serviços na área da gestão documental, nomeadamente a digitalização, restauro, conservação, eliminação e distribuição de documentos, bem ..."
+    },
+    {
+      "rank": 2,
+      "id": 236210,
+      "name": "E.A.D. - EMPRESA DE ARQUIVO DE DOCUMENTAÇÃO, S.A.",
+      "semantic_score": 0.054399318044658335,
+      "cae_classification": "Archives activities",
+      "location_address": "Parque Industrial Mata Lobos 2 Lote 2, 2950-901 Palmela",
+      "website": "www.ead.pt",
+      "activities_preview": "gestão documental nas vertentes de custódia física e de backup media de arquivos, destruição segura de documentos e arquivos, digitalização de documen..."
+    },
+    {
+      "rank": 3,
+      "id": 38838,
+      "name": "CIDADE DIGITAL - PRODUÇÃO E DIVULGAÇÃO DE CONTEÚDOS INFORMATIVOS, LDA",
+      "semantic_score": 0.0012994274657913674,
+      "cae_classification": "Computer consultancy activities",
+      "location_address": "Av. Infante Santo 55 R/Ch Esq, 1350-177 Lisboa",
+      "website": "www.cidadedigital.pt",
+      "activities_preview": "Produção e divulgação de conteúdos informativos"
+    },
+    {
+      "rank": 4,
+      "id": 206616,
+      "name": "MATÉRIA CONCRETA, LDA",
+      "semantic_score": 0.0009888596979506555,
+      "cae_classification": "Vocational and further training",
+      "location_address": "R. Cândido dos Reis 50, 2700-143 Amadora",
+      "website": null,
+      "activities_preview": "Criação, curadoria e gestão de conteúdos de formação nas várias áreas do conhecimento e áreas educativas. A distribuição e comercialização dos referid..."
+    },
+    {
+      "rank": 5,
+      "id": 236461,
+      "name": "N.M.D.C. - NEW MEDIA DIGITAL CONTENTS - GESTÃO DE CONTEÚDOS, LDA",
+      "semantic_score": 0.0008592476587280132,
+      "cae_classification": "Other information technology and computer service activities",
+      "location_address": "Edifício NOT DIGITAL, R. Abel dos Santos 83 83A, 2785-175 Lisboa",
+      "website": null,
+      "activities_preview": "Gestão de conteúdos e representação de soluções tecnológicas informáticas - 100%"
+    }
+  ],
+  "processing_log": [
+    {
+      "step": "start",
+      "timestamp": "2025-10-05T22:30:41.241439",
+      "message": "Starting processing for incentive 1288"
+    },
+    {
+      "step": "complete",
+      "timestamp": "2025-10-05T22:31:16.533319",
+      "message": "Processing completed in 35.3 seconds"
+    }
+  ]
+}

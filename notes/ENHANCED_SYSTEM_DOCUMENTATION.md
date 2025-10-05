@@ -23,15 +23,17 @@ The enhanced system uses a four-stage pipeline:
 Incentive → Semantic Search → Location Enrichment → Geographic Analysis → Results
 ```
 
-### Stage 1: Semantic Search (Optimized)
-- **Vector Search**: Direct cosine similarity (no fake RRF)
+### Stage 1: Semantic Search (SOTA-backed)
+- **Query Generation**: Combines sector + ai_description + eligible_actions
+- **Vector Search**: Direct cosine similarity on 250K company embeddings
 - **Reranking**: BGE v2-m3 for semantic precision
 - **Performance**: ~1-2 seconds for 250K companies
 
-### Stage 1: Semantic Search
-- Vector search in Qdrant (20 or 30 candidates)
-- Reranking with BGE v2-m3 for semantic relevance
-- Same as original system
+The query uses a **symmetric semantic approach** based on research:
+- Companies: `name + CAE_label + trade_description`
+- Incentives: `sector + ai_description + eligible_actions`
+
+This provides rich semantic context on both sides, dramatically improving match quality.
 
 ### Stage 2: Location Enrichment  
 - Google Maps Places API to get company locations

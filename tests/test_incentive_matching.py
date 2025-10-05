@@ -64,9 +64,10 @@ def get_random_incentive():
     
     cursor.execute("""
         SELECT incentive_id, title, sector, geo_requirement, 
-               eligible_actions, funding_rate, investment_eur
+               ai_description, eligible_actions, funding_rate, investment_eur
         FROM incentives
-        WHERE sector IS NOT NULL AND eligible_actions IS NOT NULL
+        WHERE sector IS NOT NULL AND eligible_actions IS NOT NULL 
+        AND ai_description IS NOT NULL
         ORDER BY RANDOM() LIMIT 1
     """)
     
@@ -80,8 +81,9 @@ def get_random_incentive():
     
     incentive = {
         'id': result[0], 'title': result[1], 'sector': result[2],
-        'geo_requirement': result[3], 'eligible_actions': result[4],
-        'funding_rate': result[5], 'investment_eur': result[6]
+        'geo_requirement': result[3], 'ai_description': result[4],
+        'eligible_actions': result[5], 'funding_rate': result[6], 
+        'investment_eur': result[7]
     }
 
     print(f"\n[OK] SELECTED INCENTIVE:")
@@ -101,28 +103,43 @@ def create_search_query(incentive):
     """
     Generate search query from incentive data.
     
-    Combines sector and eligible actions into a single query. This simple
-    approach works surprisingly well - better than complex LLM-generated queries.
-    The key is that sector + actions already describes what kind of company
-    would be eligible.
+    SOTA-backed approach: Combines sector, ai_description, and eligible_actions
+    to match the semantic richness of company embeddings (name + CAE + description).
     
-    Example: "Transportes Ferroviários / Serviço Público Aquisição de automotoras..."
-    This naturally matches companies in railway transport.
+    Research shows that full descriptions provide better semantic matching than
+    just keywords. This creates a comprehensive query that captures:
+    - Industry classification (sector)
+    - Program context and goals (ai_description)
+    - Specific eligible activities (eligible_actions)
     
     Args:
-        incentive: Dict with sector and eligible_actions fields
+        incentive: Dict with sector, ai_description, and eligible_actions fields
     
     Returns:
         list: Single-element list containing the query string
     """
     print("\n[QUERY] Generating search query...")
     
-    # Combine sector and eligible actions for comprehensive search
-    query = f"{incentive['sector']} {incentive['eligible_actions']}"
+    # Build query with all semantic information
+    query_parts = []
+    
+    if incentive.get('sector'):
+        query_parts.append(incentive['sector'])
+    
+    if incentive.get('ai_description'):
+        query_parts.append(incentive['ai_description'])
+    
+    if incentive.get('eligible_actions'):
+        query_parts.append(incentive['eligible_actions'])
+    
+    query = " ".join(query_parts)
     
     print(f"\n[SEARCH QUERY]")
     print(f"=" * 80)
-    print(f"{query}")
+    print(f"Sector: {incentive.get('sector', 'N/A')}")
+    print(f"AI Description: {incentive.get('ai_description', 'N/A')[:150]}...")
+    print(f"Eligible Actions: {incentive.get('eligible_actions', 'N/A')[:150]}...")
+    print(f"\nTotal query length: {len(query)} characters")
     print(f"=" * 80)
     
     return [query]

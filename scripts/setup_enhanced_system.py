@@ -11,7 +11,14 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Load environment variables
+# Get the project root directory (parent of scripts/)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
+
+# Change to project root to ensure relative paths work
+os.chdir(PROJECT_ROOT)
+
+# Load environment variables BEFORE importing
 load_dotenv('config.env')
 
 def check_environment():
