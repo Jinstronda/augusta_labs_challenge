@@ -177,21 +177,16 @@ def search_companies_qdrant(queries, model, top_k=20):
     """
     Search for companies using vector similarity.
     
-    Converts the query to a vector and finds companies with similar vectors.
-    Uses Reciprocal Rank Fusion (RRF) to combine results if multiple queries
-    are provided, though currently we only use one query.
-    
-    RRF formula: score = 1 / (rank + 60)
-    This gives higher scores to top-ranked results while still considering
-    lower ranks. The constant 60 prevents the top result from dominating.
+    Converts the query to a vector and finds companies with similar vectors
+    using cosine similarity. Returns results ranked by their actual similarity scores.
     
     Args:
-        queries: List of query strings (usually just one)
+        queries: List of query strings (we use the first one)
         model: Sentence transformer for encoding queries
         top_k: Number of candidates to return
     
     Returns:
-        list: Top companies with their RRF scores
+        list: Top companies with their cosine similarity scores
     """
     print(f"\n[QDRANT] Searching for top {top_k} companies...")
 
@@ -205,42 +200,31 @@ def search_companies_qdrant(queries, model, top_k=20):
         print(f"[ERROR] Qdrant collection not found: {e}")
         return []
 
-    all_results = {}
+    # Since we only have one query, just use cosine similarity directly
+    query = queries[0]  # Take the first (and only) query
+    print(f"\n[SEARCHING DATABASE]")
+    print(f"Query: {query}")
+    print(f"Searching through {collection_info.points_count:,} company embeddings...")
+    
+    query_vector = model.encode(query).tolist()
 
-    for idx, query in enumerate(queries, 1):
-        print(f"\n[SEARCHING DATABASE]")
-        print(f"Query: {query}")
-        print(f"Searching through {collection_info.points_count:,} company embeddings...")
+    results = client.query_points(
+        collection_name=collection_name,
+        query=query_vector,
+        limit=top_k
+    ).points
 
-        query_vector = model.encode(query).tolist()
+    # Convert to our expected format, keeping the original cosine scores
+    companies = []
+    for result in results:
+        companies.append({
+            'id': result.id,
+            'score': result.score,  # Use actual cosine similarity score
+            'payload': result.payload
+        })
 
-        results = client.query_points(
-            collection_name=collection_name,
-            query=query_vector,
-            limit=top_k * 2
-        ).points
-
-        for rank, result in enumerate(results, 1):
-            company_id = result.id
-            rrf_score = 1.0 / (rank + 60)
-
-            if company_id in all_results:
-                all_results[company_id]['score'] += rrf_score
-                all_results[company_id]['queries_matched'] += 1
-            else:
-                all_results[company_id] = {
-                    'id': company_id, 'score': rrf_score,
-                    'queries_matched': 1, 'payload': result.payload
-                }
-
-    ranked = sorted(
-        all_results.values(),
-        key=lambda x: (x['queries_matched'], x['score']),
-        reverse=True
-    )[:top_k]
-
-    print(f"[OK] Found {len(ranked)} companies using RRF")
-    return ranked
+    print(f"[OK] Found {len(companies)} companies using cosine similarity")
+    return companies
 
 
 def enrich_with_postgres(company_ids):
