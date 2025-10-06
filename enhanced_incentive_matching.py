@@ -382,8 +382,11 @@ class LocationService:
         
         Checks multiple cache levels before making API calls:
         1. Memory cache (fastest)
-        2. Database cache (persistent)
+        2. Database cache (persistent) - ONLY for successful lookups or confirmed not_found
         3. Google Maps API (slowest, costs money)
+        
+        IMPORTANT: Only caches successful results and confirmed "not found on Google Maps".
+        API errors are NOT cached and will be retried.
         
         Args:
             company_id: Database ID of the company
@@ -395,49 +398,59 @@ class LocationService:
         """
         # Check memory cache first
         if company_id in self.memory_cache:
-            return self.memory_cache[company_id]
+            cached = self.memory_cache[company_id]
+            # Only use cache if it's a success or confirmed not_found
+            if cached.api_status in ['success', 'not_found']:
+                return cached
         
-        # Check database cache
+        # Check database cache - only use if success or confirmed not_found
         cached_location = self.db_manager.get_company_location(company_id)
-        if cached_location:
+        if cached_location and cached_location.api_status in ['success', 'not_found']:
             self.memory_cache[company_id] = cached_location
             cached_location.api_status = 'cached'
             return cached_location
         
-        # Call Google Maps API
+        # Call Google Maps API (either no cache, or cache was an error that we retry)
         # Note: Google Maps has rate limits per minute (not per session)
         # The API will return rate limit errors if exceeded, which we handle gracefully
         location = self._call_google_maps_api(company_id, company_name, existing_address)
         
-        # Cache the result
-        self.memory_cache[company_id] = location
-        self.db_manager.save_company_location(location)
+        # Only cache successful results or confirmed not_found
+        # Do NOT cache API errors (rate_limited, api_error, incomplete_data)
+        if location.api_status in ['success', 'not_found']:
+            self.memory_cache[company_id] = location
+            self.db_manager.save_company_location(location)
         
         return location
     
     def _call_google_maps_api(self, company_id: int, company_name: str, 
-                             existing_address: Optional[str] = None) -> CompanyLocation:
+                             existing_address: Optional[str] = None, retry_count: int = 0) -> CompanyLocation:
         """
-        Call Google Maps Places API to get company location.
+        Call Google Maps Places API to get company location with retry logic.
         
         Uses Text Search API to find the company by name and address.
         Includes Portugal-specific biasing to improve accuracy.
+        Will retry once if the first attempt fails (except for true "not found").
         
         Args:
             company_id: Database ID of the company
             company_name: Company name to search for
             existing_address: Optional existing address to improve search
+            retry_count: Current retry attempt (0 = first try, 1 = retry)
             
         Returns:
             CompanyLocation with API results or error status
         """
-        print(f"[MAPS API] Looking up location for: {company_name}")
+        retry_suffix = f" (Retry {retry_count})" if retry_count > 0 else ""
+        print(f"[MAPS API] Looking up location for: {company_name}{retry_suffix}")
         
         # Build search query
         search_query = company_name
         if existing_address:
             search_query += f" {existing_address}"
         search_query += " Portugal"  # Ensure we search in Portugal
+        
+        print(f"[MAPS API] Search query: '{search_query}'")
         
         # API request parameters
         url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
@@ -450,64 +463,107 @@ class LocationService:
         }
         
         try:
-            response = requests.get(url, params=params, timeout=100)
+            response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
             self.api_call_count += 1
             
-            # Check for rate limiting or quota issues
+            # Log API response status
+            print(f"[MAPS API] Status: {data.get('status')}", end="")
+            if data.get('results'):
+                print(f" | Found {len(data['results'])} results")
+            else:
+                print(f" | No results")
+            
+            # Check for rate limiting or quota issues - RETRY THESE
             if data['status'] == 'OVER_QUERY_LIMIT':
-                print(f"[MAPS API] Rate limit exceeded! Waiting 60 seconds...")
-                import time
-                time.sleep(60)
-                return CompanyLocation(
-                    company_id=company_id,
-                    latitude=None,
-                    longitude=None,
-                    formatted_address=None,
-                    api_status='rate_limited',
-                    updated_at=datetime.now()
-                )
+                print(f"[MAPS API] ⚠️ Rate limit exceeded!")
+                if retry_count < 1:
+                    print(f"[MAPS API] Waiting 60 seconds before retry...")
+                    import time
+                    time.sleep(60)
+                    return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+                else:
+                    print(f"[MAPS API] ❌ Rate limit persists after retry, marking as error (will NOT cache)")
+                    return CompanyLocation(
+                        company_id=company_id,
+                        latitude=None,
+                        longitude=None,
+                        formatted_address=None,  # Don't cache this
+                        api_status='rate_limited',
+                        updated_at=datetime.now()
+                    )
             
+            # Check for API key issues - RETRY THESE
             if data['status'] == 'REQUEST_DENIED':
-                print(f"[MAPS API] Request denied! Check API key. Response: {data}")
-                return CompanyLocation(
-                    company_id=company_id,
-                    latitude=None,
-                    longitude=None,
-                    formatted_address=None,
-                    api_status='api_error',
-                    updated_at=datetime.now()
-                )
+                print(f"[MAPS API] ❌ Request denied! API Key issue: {data.get('error_message', 'No error message')}")
+                if retry_count < 1:
+                    print(f"[MAPS API] Retrying once...")
+                    import time
+                    time.sleep(2)
+                    return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+                else:
+                    print(f"[MAPS API] ❌ Request denied after retry (will NOT cache)")
+                    return CompanyLocation(
+                        company_id=company_id,
+                        latitude=None,
+                        longitude=None,
+                        formatted_address=None,  # Don't cache this
+                        api_status='api_error',
+                        updated_at=datetime.now()
+                    )
             
+            # Check for unknown errors - RETRY THESE
+            if data['status'] == 'UNKNOWN_ERROR':
+                print(f"[MAPS API] ⚠️ Unknown error from API")
+                if retry_count < 1:
+                    print(f"[MAPS API] Retrying once...")
+                    import time
+                    time.sleep(2)
+                    return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+                else:
+                    print(f"[MAPS API] ❌ Unknown error persists (will NOT cache)")
+                    return CompanyLocation(
+                        company_id=company_id,
+                        latitude=None,
+                        longitude=None,
+                        formatted_address=None,  # Don't cache this
+                        api_status='api_error',
+                        updated_at=datetime.now()
+                    )
+            
+            # Success case
             if data['status'] == 'OK' and data['results']:
                 place = data['results'][0]  # Take first result
-                
-                # Log what fields are available
-                available_fields = list(place.keys())
                 
                 # Get formatted_address with fallback
                 formatted_address = place.get('formatted_address')
                 if not formatted_address:
-                    # Fallback: construct from available fields
                     formatted_address = place.get('name', company_name)
-                    print(f"[MAPS API] No formatted_address, using fallback. Available fields: {available_fields}")
+                    print(f"[MAPS API] ⚠️ No formatted_address, using name as fallback")
                 
                 # Get coordinates with error handling
                 try:
                     lat = place['geometry']['location']['lat']
                     lng = place['geometry']['location']['lng']
                 except KeyError as e:
-                    print(f"[MAPS API] Missing geometry data: {e}. Place data: {place}")
-                    return CompanyLocation(
-                        company_id=company_id,
-                        latitude=None,
-                        longitude=None,
-                        formatted_address=formatted_address,
-                        api_status='incomplete_data',
-                        updated_at=datetime.now()
-                    )
+                    print(f"[MAPS API] ❌ Missing geometry data: {e}")
+                    if retry_count < 1:
+                        print(f"[MAPS API] Retrying once...")
+                        import time
+                        time.sleep(2)
+                        return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+                    else:
+                        print(f"[MAPS API] ❌ Missing geometry after retry (will NOT cache)")
+                        return CompanyLocation(
+                            company_id=company_id,
+                            latitude=None,
+                            longitude=None,
+                            formatted_address=None,  # Don't cache this
+                            api_status='incomplete_data',
+                            updated_at=datetime.now()
+                        )
                 
                 location = CompanyLocation(
                     company_id=company_id,
@@ -517,41 +573,87 @@ class LocationService:
                     api_status='success',
                     updated_at=datetime.now()
                 )
-                print(f"[MAPS API] Found: {location.formatted_address}")
+                print(f"[MAPS API] ✅ Found: {location.formatted_address}")
                 return location
             
+            # ZERO_RESULTS or empty results - This is a TRUE "not found"
+            # Only retry ONCE with simplified query, then cache as NOT_FOUND
             else:
-                print(f"[MAPS API] No results found for: {company_name}")
+                status = data.get('status', 'UNKNOWN')
+                print(f"[MAPS API] ❌ No results found (status: {status})")
+                
+                # Only retry if this is the first attempt AND we used "Portugal" in query
+                if retry_count == 0 and " Portugal" in search_query:
+                    print(f"[MAPS API] Retrying with simplified query (no 'Portugal')...")
+                    import time
+                    time.sleep(1)
+                    return self._call_google_maps_api(company_id, company_name, None, retry_count + 1)
+                else:
+                    print(f"[MAPS API] ❌ Marking as NOT_FOUND (will cache to avoid future API calls)")
+                    return CompanyLocation(
+                        company_id=company_id,
+                        latitude=None,
+                        longitude=None,
+                        formatted_address='NOT_FOUND',  # Cache this - truly not found
+                        api_status='not_found',
+                        updated_at=datetime.now()
+                    )
+        
+        except requests.Timeout as e:
+            print(f"[MAPS API] ⚠️ Request timeout: {e}")
+            if retry_count < 1:
+                print(f"[MAPS API] Retrying once...")
+                import time
+                time.sleep(2)
+                return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+            else:
+                print(f"[MAPS API] ❌ Timeout after retry (will NOT cache)")
                 return CompanyLocation(
                     company_id=company_id,
                     latitude=None,
                     longitude=None,
-                    formatted_address=None,
-                    api_status='not_found',
+                    formatted_address=None,  # Don't cache this
+                    api_status='api_error',
                     updated_at=datetime.now()
                 )
         
-        except KeyError as e:
-            print(f"[MAPS API] Missing field in response for {company_name}: {e}")
-            return CompanyLocation(
-                company_id=company_id,
-                latitude=None,
-                longitude=None,
-                formatted_address=None,
-                api_status='api_error',
-                updated_at=datetime.now()
-            )
-        
         except requests.RequestException as e:
-            print(f"[MAPS API] Request error for {company_name}: {e}")
-            return CompanyLocation(
-                company_id=company_id,
-                latitude=None,
-                longitude=None,
-                formatted_address=None,
-                api_status='api_error',
-                updated_at=datetime.now()
-            )
+            print(f"[MAPS API] ❌ Request error: {e}")
+            if retry_count < 1:
+                print(f"[MAPS API] Retrying once...")
+                import time
+                time.sleep(2)
+                return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+            else:
+                print(f"[MAPS API] ❌ Request error after retry (will NOT cache)")
+                return CompanyLocation(
+                    company_id=company_id,
+                    latitude=None,
+                    longitude=None,
+                    formatted_address=None,  # Don't cache this
+                    api_status='api_error',
+                    updated_at=datetime.now()
+                )
+        
+        except Exception as e:
+            print(f"[MAPS API] ❌ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+            if retry_count < 1:
+                print(f"[MAPS API] Retrying once...")
+                import time
+                time.sleep(2)
+                return self._call_google_maps_api(company_id, company_name, existing_address, retry_count + 1)
+            else:
+                print(f"[MAPS API] ❌ Unexpected error after retry (will NOT cache)")
+                return CompanyLocation(
+                    company_id=company_id,
+                    latitude=None,
+                    longitude=None,
+                    formatted_address=None,  # Don't cache this
+                    api_status='api_error',
+                    updated_at=datetime.now()
+                )
 
 
 class GeographicAnalyzer:
@@ -1153,23 +1255,28 @@ class EnhancedMatchingPipeline:
         # Ensure database schema
         self.db_manager.ensure_schema()
     
-    def find_matching_companies(self, incentive: Dict, max_candidates: int = 50) -> MatchingResult:
+    def find_matching_companies(self, incentive: Dict, max_candidates: int = 70) -> MatchingResult:
         """
         Find companies that match both semantic and geographic criteria.
         
-        Implements the iterative search algorithm with automatic expansion
-        when insufficient eligible companies are found.
+        New optimized algorithm:
+        1. Query 70 companies from vector search (one time)
+        2. Rerank all 70 once
+        3. Enrich locations one-by-one until we have 10 valid (skip NOT_FOUND)
+        4. Run geo filter on those 10
+        5. If <5 pass, enrich 10 more and repeat
+        6. Max 40 location enrichment attempts
         
         Args:
             incentive: Incentive data including geo_requirement
-            max_candidates: Maximum number of candidates to search
+            max_candidates: Maximum number of candidates to search (default 70)
             
         Returns:
             MatchingResult with final matched companies and metadata
         """
         start_time = time.time()
         print(f"\n{'='*80}")
-        print(f"ENHANCED MATCHING PIPELINE")
+        print(f"ENHANCED MATCHING PIPELINE (OPTIMIZED)")
         print(f"Incentive: {incentive['title']}")
         print(f"Geographic Requirement: {incentive['geo_requirement']}")
         print(f"{'='*80}")
@@ -1178,106 +1285,288 @@ class EnhancedMatchingPipeline:
         queries = create_search_query(incentive)
         query = queries[0]
         
-        # Start with 10 candidates, then increment by 10 up to max_candidates
-        candidates_to_try = 10
+        # Stage 1: Semantic search - get enough companies to ensure we can find 40-80 with locations
+        # Assuming ~50% have valid locations, we need 2x the target
+        initial_search_size = max(max_candidates, 150)  # Search at least 150 to get 40-80 with locations
+        print(f"\n[PIPELINE] Stage 1: Vector search for top {initial_search_size} companies...")
+        vector_results = search_companies_qdrant(queries, self.embedding_model, top_k=initial_search_size)
         
-        while candidates_to_try <= max_candidates:
-            print(f"\n[PIPELINE] Searching with {candidates_to_try} candidates...")
-            
-            # Stage 1: Semantic search and ranking
-            vector_results = search_companies_qdrant(queries, self.embedding_model, top_k=candidates_to_try)
-            
-            if not vector_results:
-                print("[ERROR] No vector search results found")
+        if not vector_results:
+            print("[ERROR] No vector search results found")
+            return MatchingResult(
+                incentive_id=incentive['id'],
+                companies=[],
+                total_candidates_searched=0,
+                geographic_eligible_count=0,
+                processing_time=time.time() - start_time,
+                created_at=datetime.now()
+            )
+        
+        # Enrich with PostgreSQL data
+        company_ids = [r['id'] for r in vector_results]
+        company_details = enrich_with_postgres(company_ids)
+        
+        # Combine vector results with company details
+        companies_for_reranking = []
+        for result in vector_results:
+            if result['id'] in company_details:
+                company = company_details[result['id']]
+                company['fusion_score'] = result['score']
+                companies_for_reranking.append(company)
+        
+        # Stage 2: Semantic reranking - rerank all companies once
+        print(f"\n[PIPELINE] Stage 2: Reranking all {len(companies_for_reranking)} companies...")
+        reranked_companies = rerank_companies(query, companies_for_reranking, self.reranker)
+        
+        print(f"[PIPELINE] Reranking complete. Companies sorted by semantic relevance.")
+        
+        # Stage 3: Adaptive location enrichment
+        # Strategy: Start with 20, expand to 40, then 60-80 if needed
+        print(f"\n[PIPELINE] Stage 3: Adaptive location enrichment...")
+        print(f"[PIPELINE] Strategy: Start with 20 → expand to 40 → expand to 60-80 if needed")
+        
+        companies_with_valid_locations = []
+        enrichment_attempts = 0
+        max_total_attempts = 150  # Maximum attempts to find companies
+        min_eligible_companies = 5  # Minimum that must pass geo filter
+        
+        # Adaptive targets: try 20, then 40, then 60-80
+        enrichment_targets = [20, 40, 60, 80]
+        current_target_index = 0
+        current_target = enrichment_targets[current_target_index]
+        
+        company_index = 0
+        
+        print(f"[PIPELINE] Phase 1: Enriching to {current_target} companies with valid locations...")
+        
+        # Keep enriching until we have enough companies with locations
+        while len(companies_with_valid_locations) < current_target and company_index < len(reranked_companies):
+            if enrichment_attempts >= max_total_attempts:
+                print(f"[PIPELINE] Reached max enrichment attempts ({max_total_attempts})")
                 break
             
-            # Enrich with PostgreSQL data
-            company_ids = [r['id'] for r in vector_results]
-            company_details = enrich_with_postgres(company_ids)
+            company = reranked_companies[company_index]
+            company_index += 1
             
-            # Combine vector results with company details
-            companies_for_reranking = []
-            for result in vector_results:
-                if result['id'] in company_details:
-                    company = company_details[result['id']]
-                    company['fusion_score'] = result['score']
-                    companies_for_reranking.append(company)
+            # Check if this company is cached as NOT_FOUND
+            cached_location = self.db_manager.get_company_location(company['id'])
+            if cached_location and cached_location.formatted_address == 'NOT_FOUND':
+                continue
             
-            # Stage 2: Semantic reranking
-            reranked_companies = rerank_companies(query, companies_for_reranking, self.reranker)
+            # Try to get location
+            enrichment_attempts += 1
+            location = self.location_service.get_company_location(
+                company['id'], 
+                company['name'],
+                existing_address=None
+            )
             
-            # Stage 3: Location enrichment
-            companies_with_locations = self._enrich_with_locations(reranked_companies)
+            # Add location data to company
+            company.update({
+                'location_lat': location.latitude,
+                'location_lon': location.longitude,
+                'location_address': location.formatted_address,
+                'formatted_address': location.formatted_address,
+                'location_api_status': location.api_status,
+                'location_updated_at': location.updated_at
+            })
             
-            # Stage 4: Geographic filtering
+            # If location is valid, add to our list
+            if location.api_status == 'success':
+                companies_with_valid_locations.append(company)
+                if len(companies_with_valid_locations) % 10 == 0:
+                    print(f"[PIPELINE] ✅ Progress: {len(companies_with_valid_locations)}/{current_target} companies with valid locations")
+        
+        if not companies_with_valid_locations:
+            print(f"[PIPELINE] ❌ No companies with valid locations found after {enrichment_attempts} attempts")
+            return MatchingResult(
+                incentive_id=incentive['id'],
+                companies=[],
+                total_candidates_searched=len(reranked_companies),
+                geographic_eligible_count=0,
+                processing_time=time.time() - start_time,
+                created_at=datetime.now()
+            )
+        
+        print(f"\n[PIPELINE] Phase 1 complete: {len(companies_with_valid_locations)} companies with valid locations")
+        
+        # Stage 4: Adaptive geographic filtering
+        print(f"\n[PIPELINE] Stage 4: Geographic filtering...")
+        
+        eligible_companies = []
+        
+        # Adaptive loop: keep expanding if we don't have 5 eligible
+        while len(eligible_companies) < min_eligible_companies:
+            print(f"[PIPELINE] Analyzing {len(companies_with_valid_locations)} companies for geographic eligibility...")
+            
+            # Run geo filter on ALL companies with valid locations
             eligibility_results = self.geo_analyzer.analyze_eligibility(
-                companies_with_locations, incentive['geo_requirement']
+                companies_with_valid_locations, incentive['geo_requirement']
             )
             
             # Filter to only eligible companies
             eligible_companies = [
-                company for company in companies_with_locations
+                company for company in companies_with_valid_locations
                 if eligibility_results.get(company['id'], False)
             ]
             
-            eligible_count = len(eligible_companies)
-            print(f"\n[PIPELINE] {eligible_count} companies meet geographic requirements")
+            print(f"[PIPELINE] ✅ {len(eligible_companies)} companies passed geographic filter")
             
-            # Decision logic
-            if eligible_count >= 5:
-                # We have 5 or more eligible companies, take top 5 by rerank score
-                final_companies = sorted(
-                    eligible_companies, 
-                    key=lambda x: x['rerank_score'], 
-                    reverse=True
-                )[:5]
+            # If we have 5 or more, we're done!
+            if len(eligible_companies) >= min_eligible_companies:
+                print(f"[PIPELINE] 🎯 Success! Found {len(eligible_companies)} eligible companies")
                 break
-            elif candidates_to_try >= max_candidates:
-                # We've reached the maximum, return what we have (even if < 5)
-                final_companies = eligible_companies
+            
+            # Need more companies - check if we can expand to next target
+            current_target_index += 1
+            if current_target_index >= len(enrichment_targets):
+                print(f"[PIPELINE] ⚠️ Reached maximum enrichment target ({enrichment_targets[-1]})")
+                print(f"[PIPELINE] Proceeding with {len(eligible_companies)} eligible companies")
                 break
-            else:
-                # Too few eligible companies, expand search by 10
-                print(f"[PIPELINE] Only {eligible_count} eligible companies found, expanding by 10...")
-                candidates_to_try += 10
-                continue
+            
+            next_target = enrichment_targets[current_target_index]
+            companies_needed = next_target - len(companies_with_valid_locations)
+            
+            if companies_needed <= 0:
+                # Already have enough companies with locations for this target
+                print(f"[PIPELINE] Already have {len(companies_with_valid_locations)} companies with valid locations")
+                break
+            
+            if company_index >= len(reranked_companies):
+                # Need to search for more companies from vector DB
+                print(f"[PIPELINE] Need more companies from vector search...")
+                additional_needed = 100  # Get 100 more companies
+                print(f"[PIPELINE] Fetching {additional_needed} more companies from vector DB...")
+                
+                additional_results = search_companies_qdrant(
+                    queries, 
+                    self.embedding_model, 
+                    top_k=len(reranked_companies) + additional_needed
+                )
+                
+                # Get only the NEW companies (skip the ones we already have)
+                new_company_ids = [r['id'] for r in additional_results[len(reranked_companies):]]
+                
+                if not new_company_ids:
+                    print(f"[PIPELINE] ⚠️ No more companies available in database")
+                    print(f"[PIPELINE] Proceeding with {len(eligible_companies)} eligible companies")
+                    break
+                
+                # Enrich new companies with PostgreSQL data
+                new_company_details = enrich_with_postgres(new_company_ids)
+                
+                # Combine with vector results
+                new_companies_for_reranking = []
+                for result in additional_results[len(reranked_companies):]:
+                    if result['id'] in new_company_details:
+                        company = new_company_details[result['id']]
+                        company['fusion_score'] = result['score']
+                        new_companies_for_reranking.append(company)
+                
+                # Rerank the new companies
+                print(f"[PIPELINE] Reranking {len(new_companies_for_reranking)} new companies...")
+                new_reranked = rerank_companies(query, new_companies_for_reranking, self.reranker)
+                
+                # Add to our existing list
+                reranked_companies.extend(new_reranked)
+                print(f"[PIPELINE] Now have {len(reranked_companies)} total companies to search")
+            
+            print(f"\n[PIPELINE] Phase {current_target_index + 1}: Expanding to {next_target} companies with valid locations...")
+            print(f"[PIPELINE] Need {companies_needed} more companies")
+            
+            # Enrich more companies to reach next target
+            while len(companies_with_valid_locations) < next_target and company_index < len(reranked_companies):
+                if enrichment_attempts >= max_total_attempts:
+                    print(f"[PIPELINE] Reached max enrichment attempts ({max_total_attempts})")
+                    break
+                
+                company = reranked_companies[company_index]
+                company_index += 1
+                
+                # Skip if cached as NOT_FOUND
+                cached_location = self.db_manager.get_company_location(company['id'])
+                if cached_location and cached_location.formatted_address == 'NOT_FOUND':
+                    continue
+                
+                enrichment_attempts += 1
+                location = self.location_service.get_company_location(
+                    company['id'], 
+                    company['name'],
+                    existing_address=None
+                )
+                
+                company.update({
+                    'location_lat': location.latitude,
+                    'location_lon': location.longitude,
+                    'location_address': location.formatted_address,
+                    'formatted_address': location.formatted_address,
+                    'location_api_status': location.api_status,
+                    'location_updated_at': location.updated_at
+                })
+                
+                if location.api_status == 'success':
+                    companies_with_valid_locations.append(company)
+                    if len(companies_with_valid_locations) % 10 == 0:
+                        print(f"[PIPELINE] ✅ Progress: {len(companies_with_valid_locations)}/{next_target} companies with valid locations")
+            
+            print(f"[PIPELINE] Phase {current_target_index + 1} complete: {len(companies_with_valid_locations)} companies with valid locations")
+        
+        print(f"\n[PIPELINE] Enrichment summary:")
+        print(f"[PIPELINE]   - Total enrichment attempts: {enrichment_attempts}")
+        print(f"[PIPELINE]   - Companies with valid locations: {len(companies_with_valid_locations)}")
+        print(f"[PIPELINE]   - Companies passing geo filter: {len(eligible_companies)}")
+        
+        # Take top 5 eligible companies by semantic score
+        final_companies = sorted(
+            eligible_companies, 
+            key=lambda x: x['rerank_score'], 
+            reverse=True
+        )[:5]
+        
+        print(f"\n[PIPELINE] Final result: {len(final_companies)} companies")
+        print(f"[PIPELINE] Total enrichment attempts: {enrichment_attempts}")
+        print(f"[PIPELINE] Total eligible companies found: {len(eligible_companies)}")
         
         # Stage 5: Calculate company scores using Universal Formula
-        print(f"\n[PIPELINE] Calculating comprehensive company scores...")
-        
-        # Get semantic scores for scoring
-        semantic_scores = [c['rerank_score'] for c in final_companies]
-        
-        # Add geo_eligible flag for scoring
-        for company in final_companies:
-            company['geo_eligible'] = True  # All final companies are geo-eligible
-        
-        # Score companies
-        scored_companies = self.company_scorer.score_companies(final_companies, incentive, semantic_scores)
-        
-        # Sort by company_score for the scored results
-        scored_companies_sorted = sorted(
-            scored_companies,
-            key=lambda x: x.get('company_score', 0),
-            reverse=True
-        )
+        if final_companies:
+            print(f"\n[PIPELINE] Stage 5: Calculating comprehensive company scores...")
+            
+            # Get semantic scores for scoring
+            semantic_scores = [c['rerank_score'] for c in final_companies]
+            
+            # Add geo_eligible flag for scoring
+            for company in final_companies:
+                company['geo_eligible'] = True  # All final companies are geo-eligible
+            
+            # Score companies
+            scored_companies = self.company_scorer.score_companies(final_companies, incentive, semantic_scores)
+            
+            # Sort by company_score for the scored results
+            scored_companies_sorted = sorted(
+                scored_companies,
+                key=lambda x: x.get('company_score', 0),
+                reverse=True
+            )
+        else:
+            scored_companies_sorted = []
         
         # Create result object (with original semantic ranking)
         processing_time = time.time() - start_time
         result = MatchingResult(
             incentive_id=incentive['id'],
             companies=final_companies,  # Keep original semantic ranking
-            total_candidates_searched=candidates_to_try,
-            geographic_eligible_count=len(final_companies),
+            total_candidates_searched=len(reranked_companies),
+            geographic_eligible_count=len(eligible_companies),
             processing_time=processing_time,
             created_at=datetime.now()
         )
         
         # Save both results to database
-        self.db_manager.save_matching_results(result)
-        self.db_manager.save_scored_results(incentive['id'], scored_companies_sorted, processing_time)
+        if final_companies:
+            self.db_manager.save_matching_results(result)
+            self.db_manager.save_scored_results(incentive['id'], scored_companies_sorted, processing_time)
         
-        print(f"\n[PIPELINE] Matching completed in {processing_time:.2f} seconds")
+        print(f"\n[PIPELINE] ✅ Matching completed in {processing_time:.2f} seconds")
         print(f"[PIPELINE] Final result: {len(final_companies)} companies")
         
         return result
@@ -1333,6 +1622,8 @@ class EnhancedMatchingPipeline:
             print(f"{'='*80}")
             print(f"Name: {company['name']}")
             print(f"Semantic Score: {company.get('rerank_score', 0):.4f}")
+            if company.get('company_score') is not None:
+                print(f"Company Score: {company.get('company_score', 0):.4f}")
             print(f"Location: {company.get('formatted_address', 'N/A')}")
             print(f"CAE Classification: {company.get('cae', 'N/A')}")
             print(f"Website: {company.get('website', 'N/A')}")
