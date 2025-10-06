@@ -456,13 +456,64 @@ class LocationService:
             
             self.api_call_count += 1
             
+            # Check for rate limiting or quota issues
+            if data['status'] == 'OVER_QUERY_LIMIT':
+                print(f"[MAPS API] Rate limit exceeded! Waiting 60 seconds...")
+                import time
+                time.sleep(60)
+                return CompanyLocation(
+                    company_id=company_id,
+                    latitude=None,
+                    longitude=None,
+                    formatted_address=None,
+                    api_status='rate_limited',
+                    updated_at=datetime.now()
+                )
+            
+            if data['status'] == 'REQUEST_DENIED':
+                print(f"[MAPS API] Request denied! Check API key. Response: {data}")
+                return CompanyLocation(
+                    company_id=company_id,
+                    latitude=None,
+                    longitude=None,
+                    formatted_address=None,
+                    api_status='api_error',
+                    updated_at=datetime.now()
+                )
+            
             if data['status'] == 'OK' and data['results']:
                 place = data['results'][0]  # Take first result
+                
+                # Log what fields are available
+                available_fields = list(place.keys())
+                
+                # Get formatted_address with fallback
+                formatted_address = place.get('formatted_address')
+                if not formatted_address:
+                    # Fallback: construct from available fields
+                    formatted_address = place.get('name', company_name)
+                    print(f"[MAPS API] No formatted_address, using fallback. Available fields: {available_fields}")
+                
+                # Get coordinates with error handling
+                try:
+                    lat = place['geometry']['location']['lat']
+                    lng = place['geometry']['location']['lng']
+                except KeyError as e:
+                    print(f"[MAPS API] Missing geometry data: {e}. Place data: {place}")
+                    return CompanyLocation(
+                        company_id=company_id,
+                        latitude=None,
+                        longitude=None,
+                        formatted_address=formatted_address,
+                        api_status='incomplete_data',
+                        updated_at=datetime.now()
+                    )
+                
                 location = CompanyLocation(
                     company_id=company_id,
-                    latitude=place['geometry']['location']['lat'],
-                    longitude=place['geometry']['location']['lng'],
-                    formatted_address=place['formatted_address'],
+                    latitude=lat,
+                    longitude=lng,
+                    formatted_address=formatted_address,
                     api_status='success',
                     updated_at=datetime.now()
                 )
@@ -480,8 +531,19 @@ class LocationService:
                     updated_at=datetime.now()
                 )
         
+        except KeyError as e:
+            print(f"[MAPS API] Missing field in response for {company_name}: {e}")
+            return CompanyLocation(
+                company_id=company_id,
+                latitude=None,
+                longitude=None,
+                formatted_address=None,
+                api_status='api_error',
+                updated_at=datetime.now()
+            )
+        
         except requests.RequestException as e:
-            print(f"[MAPS API] Error for {company_name}: {e}")
+            print(f"[MAPS API] Request error for {company_name}: {e}")
             return CompanyLocation(
                 company_id=company_id,
                 latitude=None,
