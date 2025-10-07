@@ -145,7 +145,7 @@ const ChatMessage = ({ message, isUser, isTyping, data, error }: ChatMessageProp
             <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{message}</p>
             {data && data.results.length > 0 && (
               <>
-                {(data.query_type === "SPECIFIC_INCENTIVE" || data.query_type === "INCENTIVE_GROUP")
+                {(data.query_type === "INCENTIVE_NAME" || data.query_type === "INCENTIVE_TYPE")
                   ? renderIncentiveResults(data.results as IncentiveResult[])
                   : renderCompanyResults(data.results as CompanyResult[])
                 }

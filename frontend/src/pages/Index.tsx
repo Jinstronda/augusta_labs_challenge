@@ -84,14 +84,14 @@ const Index = () => {
       let responseText = "";
       if (response.result_count === 0) {
         responseText = "I couldn't find any results for your query. Try rephrasing or being more specific.";
-      } else if (response.query_type === "SPECIFIC_COMPANY") {
-        responseText = `Here's the company with its top ${response.results[0]?.eligible_incentives?.length || 0} eligible incentives:`;
-      } else if (response.query_type === "COMPANY_GROUP") {
-        responseText = `Found ${response.result_count} compan${response.result_count > 1 ? 'ies' : 'y'} matching your criteria:`;
-      } else if (response.query_type === "SPECIFIC_INCENTIVE") {
-        responseText = `Here's the incentive with its top ${response.results[0]?.matched_companies?.length || 0} matched companies:`;
+      } else if (response.query_type === "COMPANY_NAME") {
+        responseText = `Here's the company "${response.cleaned_query}" with its top ${response.results[0]?.eligible_incentives?.length || 0} eligible incentives:`;
+      } else if (response.query_type === "COMPANY_TYPE") {
+        responseText = `Found ${response.result_count} compan${response.result_count > 1 ? 'ies' : 'y'} matching "${response.cleaned_query}":`;
+      } else if (response.query_type === "INCENTIVE_NAME") {
+        responseText = `Here's the incentive "${response.cleaned_query}" with its top ${response.results[0]?.matched_companies?.length || 0} matched companies:`;
       } else {
-        responseText = `Found ${response.result_count} incentive${response.result_count > 1 ? 's' : ''} matching your criteria:`;
+        responseText = `Found ${response.result_count} incentive${response.result_count > 1 ? 's' : ''} matching "${response.cleaned_query}":`;
       }
 
       const aiMessage: Message = {
@@ -231,4 +231,20 @@ const Index = () => {
                   isUser={message.isUser}
                   data={message.data}
                   error={message.error}
-              
+                />
+              ))}
+              {isTyping && (
+                <ChatMessage message="" isUser={false} isTyping={true} />
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ChatInput onSend={handleSendMessage} disabled={isTyping || !backendReady} />
+    </div>
+  );
+};
+
+export default Index;

@@ -14,8 +14,9 @@ torch==2.1.2
 # Vector database
 qdrant-client==1.7.3
 
-# OpenAI
+# AI APIs
 openai==1.10.0
+google-genai==1.41.0
 
 # Utilities
 python-dotenv==1.0.0

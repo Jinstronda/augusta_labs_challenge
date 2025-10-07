@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", "6333"))
     QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "companies")
     
-    # OpenAI configuration
+    # AI API configuration
     OPENAI_API_KEY: str = os.getenv("OPEN_AI", "")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "AIzaSyAKWaDFzEYZKxhuwumj1fmv-IHmz_pAGw8")
     
     # Model configuration
     EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"

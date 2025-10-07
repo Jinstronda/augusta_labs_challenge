@@ -2,7 +2,7 @@
  * TypeScript types matching backend API models
  */
 
-export type QueryType = "SPECIFIC_COMPANY" | "COMPANY_GROUP" | "SPECIFIC_INCENTIVE" | "INCENTIVE_GROUP";
+export type QueryType = "COMPANY_NAME" | "COMPANY_TYPE" | "INCENTIVE_NAME" | "INCENTIVE_TYPE";
 
 // Company types
 export interface CompanyMatch {
@@ -77,6 +77,7 @@ export interface QueryRequest {
 export interface QueryResponse {
   query_type: QueryType;
   query: string;
+  cleaned_query: string;
   results: (IncentiveResult | CompanyResult)[];
   result_count: number;
   processing_time: number;

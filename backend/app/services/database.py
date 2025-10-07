@@ -294,6 +294,66 @@ class DatabaseService:
                 cursor.close()
                 self.return_connection(conn)
     
+    def search_company_by_name(self, query: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for a company by name using PostgreSQL ILIKE.
+        
+        Returns the best matching company with its eligible incentives.
+        
+        Args:
+            query: Company name or partial name to search for
+            
+        Returns:
+            Dict with company data and eligible incentives, or None if not found
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Clean the query - remove common prefixes like "find", "the company", etc.
+            cleaned_query = query.lower()
+            for prefix in ['find the company', 'find company', 'show me', 'find', 'the company', 'company']:
+                cleaned_query = cleaned_query.replace(prefix, '').strip()
+            
+            logger.info(f"Searching for company: original='{query}', cleaned='{cleaned_query}'")
+            
+            # Search for company by name (ILIKE for case-insensitive)
+            cursor.execute("""
+                SELECT company_id
+                FROM companies
+                WHERE company_name ILIKE %s
+                ORDER BY 
+                    CASE 
+                        WHEN company_name ILIKE %s THEN 1  -- Exact match first
+                        WHEN company_name ILIKE %s THEN 2  -- Starts with
+                        ELSE 3  -- Contains
+                    END
+                LIMIT 1
+            """, (f'%{cleaned_query}%', cleaned_query, f'{cleaned_query}%'))
+            
+            result = cursor.fetchone()
+            
+            if not result:
+                logger.warning(f"No company found matching: {cleaned_query}")
+                return None
+            
+            company_id = result[0]
+            logger.info(f"Found company {company_id} for query: {cleaned_query}")
+            
+            # Get full company data with incentives
+            cursor.close()
+            return self.get_company_with_incentives(company_id)
+            
+        except Exception as e:
+            logger.error(f"Error searching company by name '{query}': {e}")
+            raise
+        finally:
+            if conn:
+                if not cursor.closed:
+                    cursor.close()
+                self.return_connection(conn)
+    
     def get_company_basic(self, company_id: int) -> Optional[Dict[str, Any]]:
         """
         Fetch basic company information without eligible incentives.

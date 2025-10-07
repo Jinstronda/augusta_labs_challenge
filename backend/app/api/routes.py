@@ -52,22 +52,22 @@ async def query_endpoint(request: QueryRequest):
         # Get services
         classifier, search_service, db_service = get_services()
         
-        # Step 1: Classify query
-        query_type = classifier.classify(request.query)
-        logger.info(f"Query classified as: {query_type}")
+        # Step 1: Classify query and extract search terms
+        query_type, cleaned_query = classifier.classify(request.query)
+        logger.info(f"Query classified as: {query_type}, cleaned: {cleaned_query}")
         
         # Step 2: Route based on classification
-        if query_type == "SPECIFIC_COMPANY":
-            results = await _handle_specific_company_query(request.query, search_service, db_service)
+        if query_type == "COMPANY_NAME":
+            results = await _handle_company_name_query(cleaned_query, db_service)
+            confidence = results[0].get('confidence', 'high') if results else None
+        elif query_type == "COMPANY_TYPE":
+            results = await _handle_company_type_query(cleaned_query, search_service, db_service)
             confidence = results[0].get('confidence', 'medium') if results else None
-        elif query_type == "COMPANY_GROUP":
-            results = await _handle_company_group_query(request.query, search_service, db_service)
-            confidence = results[0].get('confidence', 'medium') if results else None
-        elif query_type == "SPECIFIC_INCENTIVE":
-            results = await _handle_specific_incentive_query(request.query, search_service, db_service)
-            confidence = results[0].get('confidence', 'medium') if results else None
-        else:  # INCENTIVE_GROUP
-            results = await _handle_incentive_group_query(request.query, search_service, db_service)
+        elif query_type == "INCENTIVE_NAME":
+            results = await _handle_incentive_name_query(cleaned_query, search_service, db_service)
+            confidence = results[0].get('confidence', 'high') if results else None
+        else:  # INCENTIVE_TYPE
+            results = await _handle_incentive_type_query(cleaned_query, search_service, db_service)
             confidence = results[0].get('confidence', 'medium') if results else None
         
         # Step 3: Calculate processing time
@@ -78,6 +78,7 @@ async def query_endpoint(request: QueryRequest):
         return QueryResponse(
             query_type=query_type,
             query=request.query,
+            cleaned_query=cleaned_query,
             results=results,
             result_count=len(results),
             processing_time=processing_time,
@@ -89,43 +90,32 @@ async def query_endpoint(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _handle_specific_company_query(query: str, search_service: SemanticSearchService,
-                                        db_service: DatabaseService) -> List[dict]:
+async def _handle_company_name_query(query: str, db_service: DatabaseService) -> List[dict]:
     """
-    Handle SPECIFIC_COMPANY query: search for ONE specific company and return with top 5 incentives.
+    Handle COMPANY_NAME query: search PostgreSQL for specific company by name.
+    Returns ONE company with its top 5 eligible incentives.
     """
-    logger.info("Handling SPECIFIC_COMPANY query")
+    logger.info(f"Handling COMPANY_NAME query: {query}")
     
-    # Search for the specific company (limit=1 to get best match)
-    company_matches = search_service.search_companies(query, limit=1)
-    
-    if not company_matches:
-        return []
-    
-    # Get the top match
-    company_id = company_matches[0]['id']
-    
-    # Get full company data with eligible incentives
-    company_data = db_service.get_company_with_incentives(company_id)
+    # Search PostgreSQL for company by name
+    company_data = db_service.search_company_by_name(query)
     
     if company_data:
-        # Add search metadata
-        company_data['confidence'] = company_matches[0].get('confidence')
-        company_data['search_score'] = company_matches[0].get('score')
+        company_data['confidence'] = 'high'  # Direct name match
         return [company_data]
     
     return []
 
 
-async def _handle_company_group_query(query: str, search_service: SemanticSearchService,
-                                      db_service: DatabaseService) -> List[dict]:
+async def _handle_company_type_query(query: str, search_service: SemanticSearchService,
+                                     db_service: DatabaseService) -> List[dict]:
     """
-    Handle COMPANY_GROUP query: search for top 5 companies in a market/sector.
+    Handle COMPANY_TYPE query: search for top 5 companies in a market/sector using semantic search.
     Returns simplified company details without full incentive lists.
     """
-    logger.info("Handling COMPANY_GROUP query")
+    logger.info(f"Handling COMPANY_TYPE query: {query}")
     
-    # Search for companies
+    # Search for companies using semantic search
     company_matches = search_service.search_companies(query, limit=5)
     
     # Return simplified company data (without fetching all incentives for performance)
@@ -145,12 +135,13 @@ async def _handle_company_group_query(query: str, search_service: SemanticSearch
     return results
 
 
-async def _handle_specific_incentive_query(query: str, search_service: SemanticSearchService,
-                                          db_service: DatabaseService) -> List[dict]:
+async def _handle_incentive_name_query(query: str, search_service: SemanticSearchService,
+                                       db_service: DatabaseService) -> List[dict]:
     """
-    Handle SPECIFIC_INCENTIVE query: search for ONE specific incentive and return with top 5 companies.
+    Handle INCENTIVE_NAME query: search for ONE specific incentive by name.
+    Returns the incentive with its top 5 matched companies.
     """
-    logger.info("Handling SPECIFIC_INCENTIVE query")
+    logger.info(f"Handling INCENTIVE_NAME query: {query}")
     
     # Search for the specific incentive (limit=1 to get best match)
     incentive_matches = search_service.search_incentives(query, limit=1)
@@ -166,20 +157,20 @@ async def _handle_specific_incentive_query(query: str, search_service: SemanticS
     
     if incentive_data:
         # Add search metadata
-        incentive_data['confidence'] = incentive_matches[0].get('confidence')
+        incentive_data['confidence'] = 'high'  # Specific name search
         incentive_data['relevance_score'] = incentive_matches[0].get('relevance_score')
         return [incentive_data]
     
     return []
 
 
-async def _handle_incentive_group_query(query: str, search_service: SemanticSearchService,
-                                       db_service: DatabaseService) -> List[dict]:
+async def _handle_incentive_type_query(query: str, search_service: SemanticSearchService,
+                                      db_service: DatabaseService) -> List[dict]:
     """
-    Handle INCENTIVE_GROUP query: search for multiple incentives matching criteria.
+    Handle INCENTIVE_TYPE query: search for multiple incentives matching criteria.
     Returns top 5 incentives with their matched companies.
     """
-    logger.info("Handling INCENTIVE_GROUP query")
+    logger.info(f"Handling INCENTIVE_TYPE query: {query}")
     
     # Search for incentives
     incentive_matches = search_service.search_incentives(query, limit=5)
