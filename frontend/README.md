@@ -1,73 +1,107 @@
-# React + TypeScript + Vite
+# Incentive Query UI - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript frontend for querying Portuguese public incentives and companies.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This UI provides a ChatGPT-like interface for querying the incentive-company matching system. Users can ask about incentives or companies, and the system will:
+- Classify the query (INCENTIVE vs COMPANY)
+- Search the appropriate data
+- Display results with matched companies/incentives
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool
+- **TailwindCSS** - Styling
+- **React Router** - Navigation
+- **Axios** - API client
+- **React Markdown** - Markdown rendering
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
+- Node.js 20+ 
+- Backend API running on http://localhost:8000
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Install Dependencies
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Run Development Server
+```bash
+npm run dev
 ```
+
+The app will be available at http://localhost:5173
+
+### Build for Production
+```bash
+npm run build
+```
+
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── components/     # React components
+│   ├── pages/          # Page components
+│   ├── services/       # API client
+│   ├── types/          # TypeScript types
+│   ├── utils/          # Utility functions
+│   ├── App.tsx         # Main app component
+│   └── main.tsx        # Entry point
+├── public/             # Static assets
+└── index.html          # HTML template
+```
+
+## Features
+
+### Query Interface
+- ChatGPT-like chat interface
+- Auto-classification (INCENTIVE vs COMPANY)
+- Real-time search results
+- Loading states and error handling
+
+### Incentive View
+- Incentive details (title, description, criteria, etc.)
+- Top 5 matched companies with scores
+- Clickable company cards → company detail view
+
+### Company View
+- Company details (name, CAE, activities, location)
+- Eligible incentives ranked by score
+- Clickable incentive cards → incentive detail view
+
+### Navigation
+- `/` - Chat interface (home)
+- `/incentive/:id` - Incentive detail page
+- `/company/:id` - Company detail page
+
+## API Integration
+
+The frontend connects to the backend API at `http://localhost:8000/api`:
+
+- `POST /api/query` - Main query endpoint
+- `GET /api/incentive/:id` - Get incentive details
+- `GET /api/company/:id` - Get company details
+
+See `backend/README.md` for API documentation.
+
+## Styling
+
+Uses TailwindCSS with a custom theme:
+- Primary color: Blue (similar to ChatGPT)
+- Clean, minimal design
+- Responsive layout
+- Dark mode support (optional)
+
+## Development Notes
+
+- This is a frontend for an EXISTING backend system
+- Don't modify the main project README.md
+- Backend must be running for the UI to work
+- See main project docs for full system architecture
