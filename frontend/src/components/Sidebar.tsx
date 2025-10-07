@@ -139,7 +139,7 @@ export const DesktopSidebar = ({
   return (
     <motion.div
       className={cn(
-        'h-full px-4 py-4 hidden md:flex md:flex-col bg-background border-r border-border w-[260px] flex-shrink-0',
+        'h-full px-4 py-6 hidden md:flex md:flex-col bg-[#202123] text-slate-200 border-r border-black/20 w-[260px] flex-shrink-0',
         className
       )}
       animate={{
@@ -181,7 +181,7 @@ export const MobileSidebar = ({
       {/* Top bar with hamburger menu */}
       <div
         className={cn(
-          'h-14 px-4 py-4 flex flex-row md:hidden items-center justify-between bg-background border-b border-border w-full'
+          'h-14 px-4 py-4 flex flex-row md:hidden items-center justify-between bg-[#202123] text-slate-200 border-b border-black/20 w-full'
         )}
         {...props}
       >
@@ -205,7 +205,7 @@ export const MobileSidebar = ({
                 ease: 'easeInOut',
               }}
               className={cn(
-                'fixed h-full w-full inset-0 bg-background p-10 z-[100] flex flex-col justify-between',
+                'fixed h-full w-full inset-0 bg-[#202123] text-slate-200 p-10 z-[100] flex flex-col justify-between',
                 className
               )}
             >
@@ -266,7 +266,7 @@ export const SidebarLink = ({
     <a
       href={link.href}
       className={cn(
-        'flex items-center justify-start gap-2 group/sidebar py-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer',
+        'flex items-center justify-start gap-2 group/sidebar py-2 px-3 rounded-md text-slate-200/90 hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
         className
       )}
       {...props}
@@ -280,7 +280,7 @@ export const SidebarLink = ({
           display: animate ? (open ? 'inline-block' : 'none') : 'inline-block',
           opacity: animate ? (open ? 1 : 0) : 1,
         }}
-        className="text-foreground text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
+        className="text-slate-200/80 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
       >
         {link.label}
       </motion.span>
