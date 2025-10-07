@@ -1,7 +1,7 @@
 """
-Query classification service using Gemini 2.5 Flash
+query classifier using gemini 2.5 flash
 
-Classifies user queries to route them to the appropriate search service.
+figures out what the user wants and routes to the right search
 """
 
 import json
@@ -19,30 +19,26 @@ QueryType = Literal["COMPANY_NAME", "COMPANY_TYPE", "INCENTIVE_NAME", "INCENTIVE
 
 class QueryClassifier:
     """
-    Classifies queries using Gemini 2.5 Flash with fallback to keyword-based classification.
+    uses gemini to classify queries, falls back to keywords if needed
     
-    Supports 4 query types:
-    1. COMPANY_NAME - User asks for a specific company by name (extracts company name)
-    2. COMPANY_TYPE - User asks for companies in a market/sector/group (extracts search terms)
-    3. INCENTIVE_NAME - User asks for a specific incentive by name/ID (extracts incentive name)
-    4. INCENTIVE_TYPE - User asks for a group of incentives (extracts search terms)
+    four types:
+    - company_name: "find microsoft"
+    - company_type: "tech companies in lisbon"
+    - incentive_name: "digital innovation fund"
+    - incentive_type: "green energy incentives"
     
-    Returns both the query type and the cleaned/extracted search query.
+    returns the type and a cleaned search term
     """
     
     def __init__(self):
-        """Initialize Gemini client"""
+        """load gemini client"""
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
     
     def classify(self, query: str) -> Tuple[QueryType, str]:
         """
-        Classify a query into one of 4 types and extract the search query.
+        figure out what type of query this is and clean it up
         
-        Args:
-            query: User's natural language query
-            
-        Returns:
-            Tuple of (query_type, cleaned_query)
+        returns (query_type, cleaned_query)
         """
         logger.info(f"Classifying query: {query[:100]}...")
         
@@ -60,7 +56,7 @@ class QueryClassifier:
             return query_type, cleaned_query
     
     def _classify_with_gemini(self, query: str) -> Tuple[QueryType, str]:
-        """Use Gemini 2.5 Flash to classify the query"""
+        """ask gemini to classify"""
         prompt = self._create_classification_prompt(query)
         
         logger.debug(f"Gemini prompt length: {len(prompt)} characters")
@@ -104,7 +100,7 @@ class QueryClassifier:
             raise
     
     def _create_classification_prompt(self, query: str) -> str:
-        """Create prompt for Gemini classification"""
+        """build the prompt"""
         return f"""Classify this query and extract the search terms.
 
 Types:
@@ -135,7 +131,7 @@ Return JSON with type and cleaned query: {{"type": "COMPANY_NAME", "query": "ext
 JSON:"""
     
     def _classify_with_keywords(self, query: str) -> Tuple[QueryType, str]:
-        """Fallback keyword-based classification"""
+        """fallback if gemini fails"""
         query_lower = query.lower()
         
         # Strong indicators for specific company (legal entity suffixes)

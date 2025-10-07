@@ -1,5 +1,5 @@
 """
-API routes for the Incentive Query API
+api routes for the query system
 """
 
 import time
@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 def get_services():
-    """Dependency to get initialized services"""
+    """load the services with singleton models"""
     # Import here to avoid circular import
     from app.main import get_app_state
     app_state = get_app_state()
@@ -40,9 +40,7 @@ def get_services():
 @router.post("/query", response_model=QueryResponse)
 async def query_endpoint(request: QueryRequest):
     """
-    Main query endpoint for searching incentives or companies.
-    
-    Classifies the query, performs semantic search, and returns formatted results.
+    main endpoint - classifies query and returns results
     """
     start_time = time.time()
     
@@ -92,8 +90,7 @@ async def query_endpoint(request: QueryRequest):
 
 async def _handle_company_name_query(query: str, db_service: DatabaseService) -> List[dict]:
     """
-    Handle COMPANY_NAME query: search PostgreSQL for specific company by name.
-    Returns ONE company with its top 5 eligible incentives.
+    find one company by exact name match
     """
     logger.info(f"Handling COMPANY_NAME query: {query}")
     

@@ -1,8 +1,7 @@
-"""
-Semantic search service for companies and incentives
+    """
+semantic search for companies and incentives
 
-Provides vector search for companies using Qdrant and keyword search
-for incentives using PostgreSQL.
+uses qdrant for vector search and postgresql for keyword search
 """
 
 import logging
@@ -18,18 +17,14 @@ logger = logging.getLogger(__name__)
 
 class SemanticSearchService:
     """
-    Service for semantic search of companies and incentives.
+    searches companies and incentives using embeddings
     
-    Uses singleton models loaded at app startup for optimal performance.
+    models are loaded once at startup and reused
     """
     
     def __init__(self, embedding_model: SentenceTransformer, qdrant_client: QdrantClient):
         """
-        Initialize search service with pre-loaded models.
-        
-        Args:
-            embedding_model: Pre-loaded sentence transformer model
-            qdrant_client: Pre-initialized Qdrant client
+        takes pre-loaded models to avoid loading them on every request
         """
         self.embedding_model = embedding_model
         self.qdrant_client = qdrant_client
@@ -42,17 +37,9 @@ class SemanticSearchService:
     
     def search_companies(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Search for companies using semantic vector search.
+        find companies using vector similarity
         
-        Uses the existing Qdrant vector DB with 250k company records.
-        Generates query embedding and performs similarity search.
-        
-        Args:
-            query: Natural language query
-            limit: Maximum number of results (default 5)
-            
-        Returns:
-            List of company matches with scores and metadata
+        embeds the query and searches 250k companies in qdrant
         """
         logger.info(f"Searching companies for query: {query[:100]}...")
         
@@ -97,17 +84,9 @@ class SemanticSearchService:
     
     def search_incentives_semantic(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Search for incentives using semantic vector search (Qdrant).
+        find incentives using vector similarity
         
-        Uses the incentives collection in Qdrant for semantic similarity matching.
-        This is better than keyword search for understanding intent.
-        
-        Args:
-            query: Natural language query
-            limit: Maximum number of results (default 5)
-            
-        Returns:
-            List of incentive matches with scores and metadata
+        better than keyword search for understanding what the user wants
         """
         logger.info(f"Searching incentives semantically for query: {query[:100]}...")
         
@@ -167,17 +146,9 @@ class SemanticSearchService:
     
     def search_incentives(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Search for incentives using PostgreSQL keyword search.
+        find incentives using keyword matching in postgresql
         
-        Uses simple keyword matching since the incentive dataset is small (~300 records).
-        Searches in title, description, sector, and eligible_actions fields.
-        
-        Args:
-            query: Natural language query
-            limit: Maximum number of results (default 5)
-            
-        Returns:
-            List of incentive matches with metadata
+        simple and fast for 300 incentives
         """
         logger.info(f"Searching incentives for query: {query[:100]}...")
         
@@ -274,13 +245,7 @@ class SemanticSearchService:
     
     def _calculate_confidence(self, score: float) -> str:
         """
-        Calculate confidence level from similarity score.
-        
-        Args:
-            score: Similarity score (0-1 for vector search, 0-10+ for keyword search)
-            
-        Returns:
-            Confidence level: "high", "medium", or "low"
+        turn score into high/medium/low confidence
         """
         # Normalize score to 0-1 range if needed
         if score > 1.0:
