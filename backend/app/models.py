@@ -84,7 +84,7 @@ class CompanyResult(BaseModel):
 
 class QueryResponse(BaseModel):
     """Response model for query endpoint"""
-    query_type: Literal["INCENTIVE", "COMPANY"]
+    query_type: Literal["SPECIFIC_COMPANY", "COMPANY_GROUP", "SPECIFIC_INCENTIVE", "INCENTIVE_GROUP"]
     query: str
     results: List[Any]  # Will be List[IncentiveResult] or List[CompanyResult]
     result_count: int

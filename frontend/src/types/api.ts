@@ -1,121 +1,90 @@
 /**
- * TypeScript types matching backend/app/models.py EXACTLY
- * 
- * DO NOT modify these types without updating the backend Pydantic models first.
- * These types must stay in sync with the backend API.
+ * TypeScript types matching backend API models
  */
 
-// Request types
-
-export interface QueryRequest {
-  query: string; // min_length=1, max_length=500
-}
+export type QueryType = "SPECIFIC_COMPANY" | "COMPANY_GROUP" | "SPECIFIC_INCENTIVE" | "INCENTIVE_GROUP";
 
 // Company types
-
 export interface CompanyMatch {
   id: number;
   name: string;
-  cae_classification: string | null;
-  activities: string | null;
-  website: string | null;
-  location_address: string | null;
-  rank: number | null;
-  company_score: number | null;
-  semantic_score: number | null;
-  score_components: Record<string, any> | null;
+  cae_classification?: string;
+  activities?: string;
+  website?: string;
+  location_address?: string;
+  rank?: number;
+  company_score?: number;
+  semantic_score?: number;
+  score_components?: Record<string, any>;
 }
 
 export interface IncentiveResult {
   incentive_id: string;
   title: string;
-  description: string | null;
-  ai_description: string | null;
-  eligibility_criteria: string | null;
-  sector: string | null;
-  geo_requirement: string | null;
-  eligible_actions: string | null;
-  funding_rate: string | null;
-  investment_eur: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  total_budget: number | null;
-  source_link: string | null;
+  description?: string;
+  ai_description?: string;
+  eligibility_criteria?: string;
+  sector?: string;
+  geo_requirement?: string;
+  eligible_actions?: string;
+  funding_rate?: string;
+  investment_eur?: string;
+  start_date?: string;
+  end_date?: string;
+  total_budget?: number;
+  source_link?: string;
   matched_companies: CompanyMatch[];
+  confidence?: string;
+  relevance_score?: number;
 }
 
 // Incentive types
-
 export interface IncentiveMatch {
   incentive_id: string;
   title: string;
-  description: string | null;
-  ai_description: string | null;
-  sector: string | null;
-  geo_requirement: string | null;
-  eligible_actions: string | null;
-  funding_rate: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  source_link: string | null;
-  rank: number | null;
-  company_score: number | null;
+  description?: string;
+  ai_description?: string;
+  sector?: string;
+  geo_requirement?: string;
+  eligible_actions?: string;
+  funding_rate?: string;
+  start_date?: string;
+  end_date?: string;
+  source_link?: string;
+  rank?: number;
+  company_score?: number;
 }
 
 export interface CompanyResult {
   company_id: number;
   company_name: string;
-  cae_classification: string | null;
-  activities: string | null;
-  website: string | null;
-  location_address: string | null;
-  location_lat: number | null;
-  location_lon: number | null;
+  cae_classification?: string;
+  activities?: string;
+  website?: string;
+  location_address?: string;
+  location_lat?: number;
+  location_lon?: number;
   eligible_incentives: IncentiveMatch[];
+  confidence?: string;
+  search_score?: number;
 }
 
-// Main query response
-
-export type QueryType = "INCENTIVE" | "COMPANY";
+// Query types
+export interface QueryRequest {
+  query: string;
+}
 
 export interface QueryResponse {
   query_type: QueryType;
   query: string;
-  results: IncentiveResult[] | CompanyResult[];
+  results: (IncentiveResult | CompanyResult)[];
   result_count: number;
   processing_time: number;
-  confidence: string | null;
+  confidence?: string;
 }
-
-// Type guards to check which type of results we have
-
-export function isIncentiveResults(
-  response: QueryResponse
-): response is QueryResponse & { results: IncentiveResult[] } {
-  return response.query_type === "INCENTIVE";
-}
-
-export function isCompanyResults(
-  response: QueryResponse
-): response is QueryResponse & { results: CompanyResult[] } {
-  return response.query_type === "COMPANY";
-}
-
-// Error response
 
 export interface ErrorResponse {
   error: string;
-  detail: string | null;
+  detail?: string;
   status_code: number;
 }
-
-// API endpoints (for reference)
-
-export const API_BASE_URL = "http://localhost:8000";
-
-export const API_ENDPOINTS = {
-  query: "/api/query",
-  incentiveDetail: (id: string) => `/api/incentive/${id}`,
-  companyDetail: (id: number) => `/api/company/${id}`,
-  health: "/health",
-} as const;

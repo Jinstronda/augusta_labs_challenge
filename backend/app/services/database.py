@@ -294,6 +294,80 @@ class DatabaseService:
                 cursor.close()
                 self.return_connection(conn)
     
+    def get_company_basic(self, company_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Fetch basic company information without eligible incentives.
+        
+        Used for COMPANY_GROUP queries where we want simplified data for performance.
+        
+        Args:
+            company_id: The company ID to fetch
+            
+        Returns:
+            Dict with basic company data, or None if not found
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Fetch basic company info
+            cursor.execute("""
+                SELECT 
+                    c.company_id,
+                    c.company_name,
+                    c.cae_primary_label,
+                    c.trade_description_native,
+                    c.website,
+                    c.location_address,
+                    c.location_lat,
+                    c.location_lon,
+                    CASE 
+                        WHEN c.eligible_incentives IS NOT NULL 
+                        THEN jsonb_array_length(c.eligible_incentives)
+                        ELSE 0
+                    END as incentive_count
+                FROM companies c
+                WHERE c.company_id = %s
+            """, (company_id,))
+            
+            result = cursor.fetchone()
+            
+            if not result:
+                logger.warning(f"Company {company_id} not found")
+                return None
+            
+            # Parse result
+            (
+                comp_id, company_name, cae_label, activities, website,
+                location_address, location_lat, location_lon, incentive_count
+            ) = result
+            
+            # Build response with basic info only
+            company_data = {
+                'company_id': comp_id,
+                'company_name': company_name,
+                'cae_classification': cae_label,
+                'activities': activities,
+                'website': website,
+                'location_address': location_address,
+                'location_lat': float(location_lat) if location_lat else None,
+                'location_lon': float(location_lon) if location_lon else None,
+                'eligible_incentives': [],  # Empty for basic query
+                'incentive_count': incentive_count  # Just the count
+            }
+            
+            logger.info(f"Fetched basic info for company {company_id}")
+            return company_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching basic company {company_id}: {e}")
+            raise
+        finally:
+            if conn:
+                cursor.close()
+                self.return_connection(conn)
+    
     def close(self):
         """Close all connections in the pool"""
         if self.connection_pool:

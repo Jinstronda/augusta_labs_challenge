@@ -1,107 +1,73 @@
-# Incentive Query UI - Frontend
+# Welcome to your Lovable project
 
-React + TypeScript frontend for querying Portuguese public incentives and companies.
+## Project info
 
-## Overview
+**URL**: https://lovable.dev/projects/f5ac5006-635c-4f1b-983a-8f54cfce3105
 
-This UI provides a ChatGPT-like interface for querying the incentive-company matching system. Users can ask about incentives or companies, and the system will:
-- Classify the query (INCENTIVE vs COMPANY)
-- Search the appropriate data
-- Display results with matched companies/incentives
+## How can I edit this code?
 
-## Tech Stack
+There are several ways of editing your application.
 
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **TailwindCSS** - Styling
-- **React Router** - Navigation
-- **Axios** - API client
-- **React Markdown** - Markdown rendering
+**Use Lovable**
 
-## Development
+Simply visit the [Lovable Project](https://lovable.dev/projects/f5ac5006-635c-4f1b-983a-8f54cfce3105) and start prompting.
 
-### Prerequisites
-- Node.js 20+ 
-- Backend API running on http://localhost:8000
+Changes made via Lovable will be committed automatically to this repo.
 
-### Install Dependencies
-```bash
-npm install
-```
+**Use your preferred IDE**
 
-### Run Development Server
-```bash
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+
+The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+
+Follow these steps:
+
+```sh
+# Step 1: Clone the repository using the project's Git URL.
+git clone <YOUR_GIT_URL>
+
+# Step 2: Navigate to the project directory.
+cd <YOUR_PROJECT_NAME>
+
+# Step 3: Install the necessary dependencies.
+npm i
+
+# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
-The app will be available at http://localhost:5173
+**Edit a file directly in GitHub**
 
-### Build for Production
-```bash
-npm run build
-```
+- Navigate to the desired file(s).
+- Click the "Edit" button (pencil icon) at the top right of the file view.
+- Make your changes and commit the changes.
 
-## Project Structure
+**Use GitHub Codespaces**
 
-```
-frontend/
-├── src/
-│   ├── components/     # React components
-│   ├── pages/          # Page components
-│   ├── services/       # API client
-│   ├── types/          # TypeScript types
-│   ├── utils/          # Utility functions
-│   ├── App.tsx         # Main app component
-│   └── main.tsx        # Entry point
-├── public/             # Static assets
-└── index.html          # HTML template
-```
+- Navigate to the main page of your repository.
+- Click on the "Code" button (green button) near the top right.
+- Select the "Codespaces" tab.
+- Click on "New codespace" to launch a new Codespace environment.
+- Edit files directly within the Codespace and commit and push your changes once you're done.
 
-## Features
+## What technologies are used for this project?
 
-### Query Interface
-- ChatGPT-like chat interface
-- Auto-classification (INCENTIVE vs COMPANY)
-- Real-time search results
-- Loading states and error handling
+This project is built with:
 
-### Incentive View
-- Incentive details (title, description, criteria, etc.)
-- Top 5 matched companies with scores
-- Clickable company cards → company detail view
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
 
-### Company View
-- Company details (name, CAE, activities, location)
-- Eligible incentives ranked by score
-- Clickable incentive cards → incentive detail view
+## How can I deploy this project?
 
-### Navigation
-- `/` - Chat interface (home)
-- `/incentive/:id` - Incentive detail page
-- `/company/:id` - Company detail page
+Simply open [Lovable](https://lovable.dev/projects/f5ac5006-635c-4f1b-983a-8f54cfce3105) and click on Share -> Publish.
 
-## API Integration
+## Can I connect a custom domain to my Lovable project?
 
-The frontend connects to the backend API at `http://localhost:8000/api`:
+Yes, you can!
 
-- `POST /api/query` - Main query endpoint
-- `GET /api/incentive/:id` - Get incentive details
-- `GET /api/company/:id` - Get company details
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-See `backend/README.md` for API documentation.
-
-## Styling
-
-Uses TailwindCSS with a custom theme:
-- Primary color: Blue (similar to ChatGPT)
-- Clean, minimal design
-- Responsive layout
-- Dark mode support (optional)
-
-## Development Notes
-
-- This is a frontend for an EXISTING backend system
-- Don't modify the main project README.md
-- Backend must be running for the UI to work
-- See main project docs for full system architecture
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

@@ -46,16 +46,18 @@ async def lifespan(app: FastAPI):
     app_state['embedding_model'] = model
     logger.info(f"✓ Loaded embedding model: {settings.EMBEDDING_MODEL}")
     
-    # Initialize Qdrant client
+    # Initialize Qdrant client (local file storage)
     logger.info("Initializing Qdrant client...")
     from qdrant_client import QdrantClient
+    import os
     
-    qdrant_client = QdrantClient(
-        host=settings.QDRANT_HOST,
-        port=settings.QDRANT_PORT
-    )
+    # Use local file storage like the rest of the project
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    qdrant_path = os.path.join(project_root, "..", "qdrant_storage")
+    
+    qdrant_client = QdrantClient(path=qdrant_path)
     app_state['qdrant_client'] = qdrant_client
-    logger.info(f"✓ Connected to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+    logger.info(f"✓ Connected to Qdrant at {qdrant_path}")
     
     logger.info("Application startup complete!")
     

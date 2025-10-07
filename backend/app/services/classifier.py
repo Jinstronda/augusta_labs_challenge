@@ -14,12 +14,18 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-QueryType = Literal["INCENTIVE", "COMPANY"]
+QueryType = Literal["SPECIFIC_COMPANY", "COMPANY_GROUP", "SPECIFIC_INCENTIVE", "INCENTIVE_GROUP"]
 
 
 class QueryClassifier:
     """
     Classifies queries using GPT-5-mini with fallback to keyword-based classification.
+    
+    Supports 4 query types:
+    1. SPECIFIC_COMPANY - User asks for a specific company by name
+    2. COMPANY_GROUP - User asks for companies in a market/sector/group
+    3. SPECIFIC_INCENTIVE - User asks for a specific incentive by name/ID
+    4. INCENTIVE_GROUP - User asks for a group of incentives (funding type, sector, etc.)
     
     Uses the same pattern as the existing codebase for GPT-5-mini integration.
     """
@@ -30,7 +36,7 @@ class QueryClassifier:
     
     def classify(self, query: str) -> QueryType:
         """
-        Classify a query as INCENTIVE or COMPANY.
+        Classify a query into one of 4 types.
         
         Uses GPT-5-mini to understand the user's intent and classify the query.
         Falls back to keyword-based classification if GPT fails.
@@ -39,7 +45,7 @@ class QueryClassifier:
             query: User's natural language query
             
         Returns:
-            "INCENTIVE" or "COMPANY"
+            One of: "SPECIFIC_COMPANY", "COMPANY_GROUP", "SPECIFIC_INCENTIVE", "INCENTIVE_GROUP"
         """
         logger.info(f"Classifying query: {query[:100]}...")
         
@@ -93,7 +99,8 @@ class QueryClassifier:
                 # Get classification from JSON
                 classification = result_data.get('type', '').upper()
                 
-                if classification in ['INCENTIVE', 'COMPANY']:
+                valid_types = ['SPECIFIC_COMPANY', 'COMPANY_GROUP', 'SPECIFIC_INCENTIVE', 'INCENTIVE_GROUP']
+                if classification in valid_types:
                     return classification
                 else:
                     raise ValueError(f"Invalid classification: {classification}")
@@ -102,7 +109,8 @@ class QueryClassifier:
                 result_data = json.loads(result_text)
                 classification = result_data.get('type', '').upper()
                 
-                if classification in ['INCENTIVE', 'COMPANY']:
+                valid_types = ['SPECIFIC_COMPANY', 'COMPANY_GROUP', 'SPECIFIC_INCENTIVE', 'INCENTIVE_GROUP']
+                if classification in valid_types:
                     return classification
                 else:
                     raise ValueError(f"Invalid classification: {classification}")
@@ -120,23 +128,23 @@ class QueryClassifier:
         
         Uses a simple, direct format similar to the geographic analysis prompt.
         """
-        return f"""Classify this query as INCENTIVE or COMPANY.
+        return f"""Classify this query into ONE of these 4 types:
 
-INCENTIVE queries ask about:
-- Funding opportunities
-- Grants or subsidies
-- Financial support programs
-- Specific incentive names or IDs
+1. SPECIFIC_COMPANY - User asks for a specific company by name
+   Examples: "Show me Microsoft", "Find Galp Energia", "Information about Tesla"
 
-COMPANY queries ask about:
-- Specific companies
-- Company names
-- Business information
-- Company eligibility
+2. COMPANY_GROUP - User asks for companies in a market/sector/category
+   Examples: "Companies in renewable energy", "Tech startups in Lisbon", "Manufacturing companies"
+
+3. SPECIFIC_INCENTIVE - User asks for a specific incentive by name or ID
+   Examples: "Show me Digital Innovation Fund", "Incentive 1288", "PRR funding details"
+
+4. INCENTIVE_GROUP - User asks for a group/category of incentives
+   Examples: "Green energy incentives", "R&D funding programs", "Startup grants"
 
 Query: "{query}"
 
-Return JSON only: {{"type": "INCENTIVE"}} or {{"type": "COMPANY"}}
+Return JSON only with the type: {{"type": "SPECIFIC_COMPANY"}} or {{"type": "COMPANY_GROUP"}} or {{"type": "SPECIFIC_INCENTIVE"}} or {{"type": "INCENTIVE_GROUP"}}
 
 JSON:"""
     
@@ -147,6 +155,10 @@ JSON:"""
         Uses simple keyword matching when GPT is unavailable.
         """
         query_lower = query.lower()
+        
+        # Check for specific company indicators (proper names, specific company terms)
+        specific_company_indicators = ['lda', 'sa', 'unipessoal', 'ltd', 'inc', 'corp']
+        has_specific_company = any(ind in query_lower for ind in specific_company_indicators)
         
         # Keywords that suggest INCENTIVE query
         incentive_keywords = [
@@ -159,18 +171,31 @@ JSON:"""
         # Keywords that suggest COMPANY query
         company_keywords = [
             'empresa', 'empresas', 'company', 'companies', 'negócio', 'negócios',
-            'companhia', 'companhias', 'sociedade', 'sociedades', 'lda', 'sa',
-            'unipessoal', 'business', 'businesses'
+            'companhia', 'companhias', 'sociedade', 'sociedades',
+            'business', 'businesses'
+        ]
+        
+        # Keywords that suggest GROUP query (multiple results)
+        group_keywords = [
+            'empresas', 'companies', 'incentivos', 'grants', 'programas',
+            'sector', 'setor', 'mercado', 'market', 'indústria', 'industry'
         ]
         
         # Count keyword matches
         incentive_score = sum(1 for kw in incentive_keywords if kw in query_lower)
         company_score = sum(1 for kw in company_keywords if kw in query_lower)
+        is_group = any(kw in query_lower for kw in group_keywords)
         
-        logger.debug(f"Keyword scores - Incentive: {incentive_score}, Company: {company_score}")
+        logger.debug(f"Keyword scores - Incentive: {incentive_score}, Company: {company_score}, Group: {is_group}")
         
-        # Default to INCENTIVE if no clear winner (incentives are more common)
+        # Determine classification
         if company_score > incentive_score:
-            return "COMPANY"
+            if has_specific_company or not is_group:
+                return "SPECIFIC_COMPANY"
+            else:
+                return "COMPANY_GROUP"
         else:
-            return "INCENTIVE"
+            if is_group:
+                return "INCENTIVE_GROUP"
+            else:
+                return "SPECIFIC_INCENTIVE"

@@ -74,8 +74,9 @@ class SemanticSearchService:
             for result in search_results[:limit]:
                 payload = result.payload
                 
+                # Company ID is stored as the point ID in Qdrant, not in payload
                 companies.append({
-                    'id': payload.get('company_id'),
+                    'id': result.id,  # Use point ID as company ID
                     'name': payload.get('company_name'),
                     'cae_classification': payload.get('cae_primary_label'),
                     'activities': payload.get('trade_description_native'),
