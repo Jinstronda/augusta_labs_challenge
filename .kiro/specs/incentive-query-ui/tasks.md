@@ -259,6 +259,7 @@ conda activate turing0.1
 
 
 
+
   - **READ THE WHOLE PROJECT FIRST** - Understand the chat-based query interface
   - **READ**: UI.md - ChatGPT-like interface requirements
   - **READ**: backend/app/api/routes.py - Query endpoint behavior
@@ -307,7 +308,11 @@ conda activate turing0.1
   - _Requirements: 6.3, 6.4_
 
 
-- [ ] 18. Write frontend tests
+- [x] 18. Write frontend tests
+
+
+
+
 
 
 
@@ -317,6 +322,8 @@ conda activate turing0.1
   - Write integration tests for ChatInterface
   - Add Playwright tests for full user flow
   - _Requirements: All frontend requirements_
+
+
 
 
 
@@ -341,6 +348,8 @@ conda activate turing0.1
   - Document environment variables (both backend and frontend)
   - Add troubleshooting guide for the UI layer
   - **DO NOT** remove or modify existing documentation about the matching system
+
+
   - _Requirements: 8.5_
 
 - [ ] 21. End-to-end testing and polish
@@ -354,7 +363,9 @@ conda activate turing0.1
   - Fix any UI/UX issues
   - _Requirements: All requirements_
 
-- [ ] 22. Future: Create incentive embeddings for multi-result queries
+- [-] 22. Future: Create incentive embeddings for multi-result queries
+
+
   - Create script `scripts/create_incentive_embeddings.py`
   - Generate embeddings for all incentives using `paraphrase-multilingual-MiniLM-L12-v2`
   - Store embeddings in new Qdrant collection `incentives`

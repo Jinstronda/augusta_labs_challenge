@@ -315,3 +315,348 @@ And the system gets better the more you use it. The 100th incentive is 10x cheap
 **Cache hit rate**: 90%+ after 100 incentives
 
 **Scalability**: Linear with incentives, sub-linear with companies
+
+
+---
+
+## Web Chat Interface
+
+### Overview
+
+A ChatGPT-like web interface for querying the incentive-company matching system. Users can ask natural language questions about incentives or companies and get instant results with ranked matches.
+
+**Key Features:**
+- Natural language queries (Portuguese/English)
+- Automatic query classification (incentive vs company search)
+- Interactive results with clickable cards
+- Detail views for incentives and companies
+- Fast semantic search using existing embeddings
+- Clean, modern UI built with React + TailwindCSS
+
+### Quick Start
+
+**Prerequisites:**
+- Completed main system setup (database, embeddings, batch processing)
+- Node.js 18+ installed
+- Backend dependencies installed
+
+**1. Start Backend API:**
+```bash
+cd backend
+conda activate turing0.1
+uvicorn app.main:app --reload --port 8000
+```
+
+**2. Start Frontend (in new terminal):**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+**3. Open Browser:**
+```
+http://localhost:5173
+```
+
+### Example Queries
+
+**Incentive Queries:**
+- "What incentives are available for tech companies?"
+- "Apoios para inovação digital"
+- "Funding for renewable energy"
+- "Programa de exportação"
+
+**Company Queries:**
+- "What incentives is TechCorp eligible for?"
+- "Empresas de software"
+- "Companies in renewable energy"
+- "Show me tech startups"
+
+### How It Works
+
+```
+User Query → LLM Classification → Search → Results Display
+     ↓              ↓                ↓            ↓
+  "tech"      INCENTIVE/COMPANY   Qdrant/    Incentive Card
+  incentives                      PostgreSQL  + Top 5 Companies
+```
+
+**Query Classification:**
+- Uses GPT-4-mini to classify query intent
+- Determines if user wants incentives or companies
+- Falls back to keyword matching if API fails
+
+**Search:**
+- **Companies**: Qdrant vector search (250K embeddings)
+- **Incentives**: PostgreSQL keyword search (362 records)
+
+**Results:**
+- **Incentive**: Shows incentive details + top 5 matching companies
+- **Company**: Shows company details + eligible incentives (from reverse index)
+
+### Architecture
+
+```
+Frontend (React)  →  Backend (FastAPI)  →  Database (PostgreSQL + Qdrant)
+Port 5173            Port 8000              Existing data layer
+```
+
+**Frontend:**
+- React 18 + Vite + TypeScript
+- TailwindCSS for styling
+- React Router for navigation
+- Axios for API calls
+
+**Backend:**
+- FastAPI (Python)
+- Query classifier (GPT-4-mini)
+- Semantic search service
+- Database service
+
+**Data:**
+- Uses existing `top_5_companies_scored` from batch processing
+- Uses new `eligible_incentives` reverse index
+- No modifications to core matching system
+
+### Reverse Index
+
+The UI requires a reverse index (company → incentives) for fast company queries.
+
+**Build reverse index:**
+```bash
+conda activate turing0.1
+python scripts/build_company_incentive_index.py
+```
+
+**What it does:**
+1. Iterates through all incentives
+2. Extracts companies from `top_5_companies_scored`
+3. Aggregates incentives per company
+4. Keeps top 5 incentives per company (by score)
+5. Saves to `companies.eligible_incentives` JSONB column
+
+**When to run:**
+- After batch processing completes
+- When new incentives are processed
+- Takes ~5-10 minutes for 362 incentives
+
+### API Endpoints
+
+**POST /api/query**
+- Natural language query
+- Returns incentive or company results
+
+**GET /api/incentive/:id**
+- Get incentive details with top 5 companies
+
+**GET /api/company/:id**
+- Get company details with eligible incentives
+
+**GET /health**
+- Health check
+
+See `docs/API_DOCUMENTATION.md` for details.
+
+### Configuration
+
+**Backend** (`config.env`):
+```bash
+# Database (existing)
+DB_NAME=incentives_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
+
+# API Keys (existing)
+OPEN_AI=sk-proj-your-key
+QDRANT_PATH=./qdrant_storage
+
+# UI-specific (optional)
+CORS_ORIGINS=http://localhost:5173
+LOG_LEVEL=INFO
+API_TIMEOUT=30
+```
+
+**Frontend** (`.env.local`):
+```bash
+VITE_API_URL=http://localhost:8000
+```
+
+See `docs/ENVIRONMENT_VARIABLES.md` for details.
+
+### Performance
+
+**Response Times:**
+- Query classification: 200-500ms (GPT-4-mini)
+- Company search: 50-100ms (Qdrant)
+- Incentive search: 20-50ms (PostgreSQL)
+- Total: 300-1000ms per query
+
+**Optimizations:**
+- Models loaded as singletons at startup
+- Database connection pooling
+- Code splitting and lazy loading
+- Request debouncing
+
+### Deployment
+
+**Development:**
+```bash
+# Terminal 1: Backend
+cd backend
+uvicorn app.main:app --reload
+
+# Terminal 2: Frontend
+cd frontend
+npm run dev
+```
+
+**Production (Docker):**
+```bash
+# Build and run
+docker-compose up -d
+
+# Or separately
+docker build -t incentive-backend ./backend
+docker build -t incentive-frontend ./frontend
+docker run -p 8000:8000 incentive-backend
+docker run -p 80:80 incentive-frontend
+```
+
+**Production (Separate Hosting):**
+- Frontend: Vercel/Netlify (static build)
+- Backend: Railway/Render/Fly.io (containerized)
+- Database: Existing PostgreSQL instance
+
+### Testing
+
+**Backend Tests:**
+```bash
+cd backend
+pytest tests/
+```
+
+**Frontend Tests:**
+```bash
+cd frontend
+npm test
+```
+
+**Manual Testing:**
+```bash
+# Test API
+curl -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"tech incentives"}'
+
+# Test health
+curl http://localhost:8000/health
+```
+
+### Troubleshooting
+
+**Backend won't start:**
+- Check `OPEN_AI` environment variable is set
+- Verify PostgreSQL is running
+- Ensure Qdrant embeddings exist (`./qdrant_storage`)
+
+**Frontend can't reach backend:**
+- Check `VITE_API_URL` in `.env.local`
+- Verify `CORS_ORIGINS` in backend config
+- Ensure backend is running on port 8000
+
+**No results found:**
+- Verify database has data (incentives and companies)
+- Check reverse index is built
+- Try more specific queries
+
+**Slow queries:**
+- Check models are loaded as singletons (startup logs)
+- Verify database indexes exist
+- Consider using GPU for embeddings
+
+See `docs/TROUBLESHOOTING_UI.md` for detailed troubleshooting.
+
+### Documentation
+
+**UI-Specific:**
+- `docs/API_DOCUMENTATION.md` - API endpoints and examples
+- `docs/UI_ARCHITECTURE.md` - System architecture and data flow
+- `docs/ENVIRONMENT_VARIABLES.md` - Configuration guide
+- `docs/TROUBLESHOOTING_UI.md` - Common issues and solutions
+
+**Existing System:**
+- `README.md` - Main documentation (this file)
+- `GETTING_STARTED.md` - Setup guide
+- `PROJECT_STRUCTURE.md` - File organization
+- `EQUATION.md` - Scoring formula
+- `UI.md` - UI requirements
+
+**Backend:**
+- `backend/README.md` - Backend-specific documentation
+- `backend/app/` - Source code
+- `backend/tests/` - Test suite
+
+**Frontend:**
+- `frontend/README.md` - Frontend-specific documentation
+- `frontend/src/` - Source code
+- `frontend/src/components/` - UI components
+
+### Cost
+
+**Per 1,000 Queries:**
+- OpenAI (GPT-4-mini): ~$10-20 (classification)
+- Google Maps: $0 (not used by UI)
+- Total: ~$10-20 (~$0.01-0.02 per query)
+
+**Infrastructure:**
+- Development: Free (local)
+- Production: $20-50/month (hosting + database)
+
+### Limitations
+
+**Current:**
+- Single result per query (top match only)
+- No multi-language support (Portuguese/English mixed)
+- No query history or saved searches
+- No advanced filters (sector, region, score)
+
+**Future Enhancements:**
+- Multi-result display (top 3-5)
+- Incentive embeddings for better search
+- Query history and favorites
+- Advanced filters and sorting
+- Comparison mode
+- Real-time updates
+- Analytics dashboard
+
+### Integration with Existing System
+
+**What the UI Uses:**
+- ✅ Existing PostgreSQL database (read-only)
+- ✅ Existing Qdrant embeddings (read-only)
+- ✅ Existing models (sentence-transformers)
+- ✅ Pre-computed `top_5_companies_scored`
+- ✅ New `eligible_incentives` reverse index
+
+**What the UI Does NOT Touch:**
+- ❌ Core matching logic (`enhanced_incentive_matching.py`)
+- ❌ Scoring formula (EQUATION.md)
+- ❌ Batch processing scripts
+- ❌ Database writes (read-only)
+
+**Key Principle:** The UI is a thin, read-only layer on top of the existing system. It does not modify the core matching logic or data processing.
+
+### Summary
+
+The web chat interface provides an intuitive way to query the incentive-company matching system without modifying the core architecture. It leverages existing embeddings and pre-computed matches for fast, accurate results.
+
+**Setup Time:** 10-15 minutes (after main system is set up)
+**Query Time:** <1 second per query
+**Cost:** ~$0.01-0.02 per query
+**Maintenance:** Minimal (rebuild reverse index when processing new incentives)
+
+For detailed setup and usage instructions, see the documentation files in `docs/`.
+

@@ -1,389 +1,496 @@
-/**
- * ChatInterface Component
- * 
- * A ChatGPT-like interface for querying incentives and companies.
- * 
- * Features:
- * - Chat message history with user queries and assistant responses
- * - Auto-scroll to latest message
- * - "New Chat" button to clear history
- * - Integration with QueryInput and ResultsDisplay components
- * - Loading states and error handling
- * 
- * Requirements: 4.1, 4.3, 4.4, 4.5, 4.7, 4.8
- */
+"use client";
 
 import React, { useState, useRef, useEffect } from 'react';
+import {
+  Moon,
+  Sun,
+  Plus,
+  MessageSquare,
+  Settings,
+  User,
+  Paperclip,
+  Mic,
+  ArrowUp,
+  Search,
+  Code,
+  PenTool,
+  BookOpen,
+} from 'lucide-react';
+import { motion } from 'framer-motion';
 import type { QueryResponse } from '../types/api';
-import { QueryInput } from './QueryInput';
 import { ResultsDisplay } from './ResultsDisplay';
 import { queryIncentivesOrCompanies, ApiError } from '../services/api';
+import { Sidebar, SidebarBody, SidebarLink } from './Sidebar';
+import { Typewriter } from './Typewriter';
+import { MessageLoading } from './MessageLoading';
 
 /**
- * Chat message types
+ * Message structure
  */
 interface ChatMessage {
   id: string;
-  type: 'user' | 'assistant';
+  role: 'user' | 'assistant';
   content: string | QueryResponse;
   timestamp: Date;
   error?: string;
 }
 
 interface ChatInterfaceProps {
-  /** Callback when a company is clicked */
   onCompanyClick?: (companyId: number) => void;
-  /** Callback when an incentive is clicked */
   onIncentiveClick?: (incentiveId: string) => void;
 }
 
 /**
- * Generate unique message ID
+ * Utility to combine class names
  */
-const generateMessageId = (): string => {
-  return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-};
+function cn(...inputs: (string | undefined | null | false)[]): string {
+  return inputs.filter(Boolean).join(' ');
+}
 
 /**
- * ChatInterface Component
+ * Logo component for sidebar
  */
+const Logo = () => {
+  return (
+    <a
+      href="#"
+      className="font-normal flex space-x-2 items-center text-sm text-foreground py-1 relative z-20"
+      onClick={(e) => e.preventDefault()}
+    >
+      <div className="h-5 w-6 bg-gradient-to-br from-primary to-cyan-500 rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm flex-shrink-0" />
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="font-medium text-foreground whitespace-pre"
+      >
+        Incentive AI
+      </motion.span>
+    </a>
+  );
+};
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onCompanyClick,
   onIncentiveClick,
 }) => {
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  /**
-   * Auto-scroll to latest message when messages change
-   */
+  // Auto-scroll to latest message
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    scrollToBottom();
   }, [messages]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [inputValue]);
+
+  // Apply dark mode
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   /**
-   * Handle query submission
+   * Handle message submission
    */
-  const handleSubmit = async (query: string) => {
-    // Add user message to history
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isTyping) return;
+
     const userMessage: ChatMessage = {
-      id: generateMessageId(),
-      type: 'user',
-      content: query,
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputValue,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
+    setInputValue('');
+    setIsTyping(true);
 
     try {
-      // Call API
-      const response = await queryIncentivesOrCompanies(query);
-
-      // Add assistant response to history
+      const response = await queryIncentivesOrCompanies(inputValue);
       const assistantMessage: ChatMessage = {
-        id: generateMessageId(),
-        type: 'assistant',
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
         content: response,
         timestamp: new Date(),
       };
-
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      // Add error message to history
-      const errorMessage = error instanceof ApiError 
-        ? error.message 
-        : 'An unexpected error occurred';
-
+      const errorMessage =
+        error instanceof ApiError
+          ? error.message
+          : 'An unexpected error occurred';
       const assistantMessage: ChatMessage = {
-        id: generateMessageId(),
-        type: 'assistant',
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
         content: '',
         timestamp: new Date(),
         error: errorMessage,
       };
-
       setMessages((prev) => [...prev, assistantMessage]);
     } finally {
-      setIsLoading(false);
+      setIsTyping(false);
     }
   };
 
-  /**
-   * Clear chat history
-   */
-  const handleNewChat = () => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleNewChat = (e: React.MouseEvent) => {
+    e.preventDefault();
     setMessages([]);
+    setInputValue('');
   };
 
-  /**
-   * Render a single message
-   */
-  const renderMessage = (message: ChatMessage) => {
-    if (message.type === 'user') {
-      // User message
-      return (
-        <div key={message.id} className="flex justify-end mb-4">
-          <div className="max-w-3xl">
-            <div className="bg-blue-600 text-white rounded-2xl px-5 py-3 shadow-md">
-              <p className="text-sm whitespace-pre-wrap break-words">
-                {message.content as string}
-              </p>
-            </div>
-            <div className="text-xs text-gray-500 mt-1 text-right">
-              {message.timestamp.toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
-            </div>
-          </div>
-        </div>
-      );
-    } else {
-      // Assistant message
-      return (
-        <div key={message.id} className="flex justify-start mb-4">
-          <div className="max-w-4xl w-full">
-            {/* Assistant avatar/label */}
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Assistant
-              </span>
-            </div>
+  // Sidebar navigation links
+  const links = [
+    {
+      label: 'New Chat',
+      href: '#',
+      icon: <Plus className="text-foreground h-5 w-5 flex-shrink-0" />,
+      onClick: handleNewChat,
+    },
+    {
+      label: 'Chat History',
+      href: '#',
+      icon: <MessageSquare className="text-foreground h-5 w-5 flex-shrink-0" />,
+    },
+    {
+      label: 'Settings',
+      href: '#',
+      icon: <Settings className="text-foreground h-5 w-5 flex-shrink-0" />,
+    },
+  ];
 
-            {/* Message content */}
-            <div className="ml-10">
-              {message.error ? (
-                // Error state
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <svg
-                      className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-semibold text-red-800 mb-1">
-                        Error
-                      </p>
-                      <p className="text-sm text-red-700">
-                        {message.error}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Results display
-                <ResultsDisplay
-                  response={message.content as QueryResponse}
-                  isLoading={false}
-                  error={null}
-                  onCompanyClick={onCompanyClick}
-                  onIncentiveClick={onIncentiveClick}
-                />
-              )}
-
-              <div className="text-xs text-gray-500 mt-2">
-                {message.timestamp.toLocaleTimeString([], { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-  };
+  // Suggestion prompts
+  const suggestions = [
+    { icon: <BookOpen className="w-5 h-5" />, text: 'Tech company incentives' },
+    { icon: <Code className="w-5 h-5" />, text: 'Digital innovation funding' },
+    { icon: <PenTool className="w-5 h-5" />, text: 'Green energy projects' },
+    { icon: <Search className="w-5 h-5" />, text: 'Export support programs' },
+  ];
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-[#0A0A0A]">
-      {/* Minimal Header */}
-      <header className="border-b border-gray-100 dark:border-gray-800 px-4 py-3 flex items-center justify-between backdrop-blur-sm bg-white/80 dark:bg-[#0A0A0A]/80 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <svg
-              className="w-4 h-4 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
-            Incentive AI
-          </h1>
-        </div>
-
-        {/* New Chat button - minimal */}
-        {messages.length > 0 && (
-          <button
-            onClick={handleNewChat}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all duration-200"
-            aria-label="Start new chat"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            New
-          </button>
-        )}
-      </header>
-
-      {/* Messages container */}
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-6 py-6"
-      >
-        {messages.length === 0 ? (
-          // Empty state - welcome message
-          <div className="flex flex-col items-center justify-center h-full text-center max-w-2xl mx-auto">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mb-6">
-              <svg
-                className="w-12 h-12 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
+    <div 
+      className="flex flex-col md:flex-row w-full h-screen overflow-hidden"
+      style={{
+        backgroundColor: darkMode ? '#000000' : '#ffffff',
+        color: darkMode ? '#ffffff' : '#000000'
+      }}
+    >
+      {/* Sidebar */}
+      <Sidebar open={open} setOpen={setOpen}>
+        <SidebarBody className="justify-between gap-10">
+          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+            <Logo />
+            <div className="mt-8 flex flex-col gap-2">
+              {links.map((link, idx) => (
+                <SidebarLink
+                  key={idx}
+                  link={link}
+                  {...(link.onClick && {
+                    onClick: link.onClick as React.MouseEventHandler<HTMLAnchorElement>,
+                  })}
                 />
-              </svg>
+              ))}
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
-              Welcome to Incentive Query System
-            </h2>
-            <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
-              Ask me anything about incentives or companies. I'll help you find the best matches.
-            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {/* Theme Toggle */}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                setDarkMode(!darkMode);
+              }}
+              className="flex items-center justify-start gap-2 group/sidebar py-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+            >
+              <div className="relative w-5 h-5 flex-shrink-0">
+                <Sun
+                  className={`absolute inset-0 h-5 w-5 text-amber-500 transition-all duration-500 ${
+                    darkMode
+                      ? 'rotate-90 scale-0 opacity-0'
+                      : 'rotate-0 scale-100 opacity-100'
+                  }`}
+                />
+                <Moon
+                  className={`absolute inset-0 h-5 w-5 text-slate-400 dark:text-slate-300 transition-all duration-500 ${
+                    darkMode
+                      ? 'rotate-0 scale-100 opacity-100'
+                      : '-rotate-90 scale-0 opacity-0'
+                  }`}
+                />
+              </div>
+              <motion.span
+                animate={{
+                  display: open ? 'inline-block' : 'none',
+                  opacity: open ? 1 : 0,
+                }}
+                className="text-foreground text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block"
+              >
+                Theme
+              </motion.span>
+            </a>
+            <SidebarLink
+              link={{
+                label: 'User Profile',
+                href: '#',
+                icon: (
+                  <div className="h-7 w-7 flex-shrink-0 rounded-full bg-primary flex items-center justify-center">
+                    <User className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                ),
+              }}
+            />
+          </div>
+        </SidebarBody>
+      </Sidebar>
 
-            {/* Example queries */}
-            <div className="w-full max-w-xl">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 text-left">
-                Try asking:
-              </p>
-              <div className="space-y-2">
-                {[
-                  'What incentives are available for tech companies?',
-                  'Show me companies eligible for digital innovation funding',
-                  'Find incentives for green energy projects',
-                  'Which companies qualify for export support?',
-                ].map((example, index) => (
+      {/* Main Content */}
+      <div className="flex flex-1 flex-col h-full overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          {messages.length === 0 ? (
+            /* Welcome Screen */
+            <div className="flex flex-col items-center justify-center h-full max-w-3xl mx-auto">
+              <div className="mb-8">
+                <div 
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+                  }}
+                >
+                  <MessageSquare className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              <h1 
+                className="text-3xl md:text-4xl font-bold mb-4 text-center"
+                style={{ color: darkMode ? '#ffffff' : '#000000' }}
+              >
+                <Typewriter
+                  text={['How can I help you today?']}
+                  speed={70}
+                  loop={false}
+                  showCursor={false}
+                />
+              </h1>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full mt-8">
+                {suggestions.map((suggestion, idx) => (
                   <button
-                    key={index}
-                    onClick={() => handleSubmit(example)}
-                    disabled={isLoading}
-                    className="w-full text-left px-4 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg transition-colors duration-200 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    key={idx}
+                    onClick={() => setInputValue(suggestion.text)}
+                    className="flex items-center gap-3 p-4 rounded-xl border transition-colors text-left"
+                    style={{
+                      backgroundColor: darkMode ? '#1f1f1f' : '#f5f5f5',
+                      borderColor: darkMode ? '#404040' : '#e5e5e5',
+                      color: darkMode ? '#ffffff' : '#000000'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = darkMode ? '#2a2a2a' : '#e5e5e5';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = darkMode ? '#1f1f1f' : '#f5f5f5';
+                    }}
                   >
-                    <span className="text-blue-500 mr-2">→</span>
-                    {example}
+                    <div style={{ color: '#3b82f6' }}>{suggestion.icon}</div>
+                    <span className="text-sm">
+                      {suggestion.text}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
-          </div>
-        ) : (
-          // Chat messages
-          <div className="max-w-5xl mx-auto">
-            {messages.map(renderMessage)}
-            
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="flex justify-start mb-4">
-                <div className="max-w-4xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                        />
-                      </svg>
+          ) : (
+            /* Chat Messages */
+            <div className="max-w-3xl mx-auto space-y-6">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={cn(
+                    'flex gap-4',
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
+                  )}
+                >
+                  {message.role === 'assistant' && (
+                    <div 
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 text-white" />
                     </div>
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Assistant
-                    </span>
+                  )}
+                  <div
+                    className="rounded-2xl px-4 py-3 max-w-[80%]"
+                    style={{
+                      backgroundColor: message.role === 'user' 
+                        ? (darkMode ? '#ffffff' : '#000000')
+                        : (darkMode ? '#1f1f1f' : '#f5f5f5'),
+                      color: message.role === 'user' 
+                        ? (darkMode ? '#000000' : '#ffffff')
+                        : (darkMode ? '#ffffff' : '#000000')
+                    }}
+                  >
+                    {message.role === 'user' ? (
+                      <p className="text-sm whitespace-pre-wrap">
+                        {message.content as string}
+                      </p>
+                    ) : message.error ? (
+                      <p className="text-sm" style={{ color: '#ef4444' }}>{message.error}</p>
+                    ) : (
+                      <ResultsDisplay
+                        response={message.content as QueryResponse}
+                        isLoading={false}
+                        error={null}
+                        onCompanyClick={onCompanyClick}
+                        onIncentiveClick={onIncentiveClick}
+                      />
+                    )}
                   </div>
-                  <div className="ml-10">
-                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                      </div>
-                      <span className="text-sm">Thinking...</span>
+                  {message.role === 'user' && (
+                    <div 
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        backgroundColor: darkMode ? '#ffffff' : '#000000'
+                      }}
+                    >
+                      <User className="h-4 w-4" style={{ color: darkMode ? '#000000' : '#ffffff' }} />
                     </div>
+                  )}
+                </div>
+              ))}
+              {isTyping && (
+                <div className="flex gap-4 justify-start">
+                  <div 
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+                    }}
+                  >
+                    <MessageSquare className="w-4 h-4 text-white" />
+                  </div>
+                  <div 
+                    className="rounded-2xl px-4 py-3"
+                    style={{
+                      backgroundColor: darkMode ? '#1f1f1f' : '#f5f5f5'
+                    }}
+                  >
+                    <MessageLoading />
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
 
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
+        {/* Input Area */}
+        <div 
+          className="border-t p-4"
+          style={{
+            borderColor: darkMode ? '#404040' : '#e5e5e5',
+            backgroundColor: darkMode ? '#000000' : '#ffffff'
+          }}
+        >
+          <div className="max-w-3xl mx-auto">
+            <div 
+              className="flex items-end gap-2 rounded-3xl p-2"
+              style={{
+                backgroundColor: darkMode ? '#1f1f1f' : '#f5f5f5'
+              }}
+            >
+              <button 
+                className="p-2 rounded-full transition-colors"
+                style={{
+                  color: darkMode ? '#a3a3a3' : '#737373'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = darkMode ? '#2a2a2a' : '#e5e5e5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Message Incentive AI..."
+                rows={1}
+                className="flex-1 bg-transparent resize-none outline-none px-2 py-2 max-h-[200px]"
+                style={{
+                  color: darkMode ? '#ffffff' : '#000000'
+                }}
+              />
+              <button 
+                className="p-2 rounded-full transition-colors"
+                style={{
+                  color: darkMode ? '#a3a3a3' : '#737373'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = darkMode ? '#2a2a2a' : '#e5e5e5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+              <button
+                onClick={handleSendMessage}
+                disabled={!inputValue.trim()}
+                className="p-2 rounded-full transition-colors"
+                style={{
+                  backgroundColor: inputValue.trim() 
+                    ? (darkMode ? '#ffffff' : '#000000')
+                    : (darkMode ? '#2a2a2a' : '#e5e5e5'),
+                  color: inputValue.trim() 
+                    ? (darkMode ? '#000000' : '#ffffff')
+                    : (darkMode ? '#a3a3a3' : '#737373'),
+                  cursor: inputValue.trim() ? 'pointer' : 'not-allowed'
+                }}
+                onMouseEnter={(e) => {
+                  if (inputValue.trim()) {
+                    e.currentTarget.style.backgroundColor = darkMode ? '#e5e5e5' : '#404040';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (inputValue.trim()) {
+                    e.currentTarget.style.backgroundColor = darkMode ? '#ffffff' : '#000000';
+                  }
+                }}
+              >
+                <ArrowUp className="w-5 h-5" />
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Input area */}
-      <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-4">
-        <QueryInput
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-          placeholder="Ask about incentives or companies..."
-        />
+        </div>
       </div>
     </div>
   );
