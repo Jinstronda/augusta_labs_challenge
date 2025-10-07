@@ -168,12 +168,17 @@ async def _handle_incentive_type_query(query: str, search_service: SemanticSearc
                                       db_service: DatabaseService) -> List[dict]:
     """
     Handle INCENTIVE_TYPE query: search for multiple incentives matching criteria.
+    Uses semantic search (Qdrant) if available, falls back to keyword search.
     Returns top 5 incentives with their matched companies.
     """
     logger.info(f"Handling INCENTIVE_TYPE query: {query}")
     
-    # Search for incentives
-    incentive_matches = search_service.search_incentives(query, limit=5)
+    # Get matches from semantic search
+    incentive_matches = search_service.search_incentives_semantic(query, limit=5)
+    
+    if not incentive_matches:
+        logger.info("No incentive matches found")
+        return []
     
     # For each incentive, get full details with matched companies
     results = []

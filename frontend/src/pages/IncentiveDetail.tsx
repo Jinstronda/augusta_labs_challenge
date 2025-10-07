@@ -137,10 +137,10 @@ const IncentiveDetail = () => {
             </div>
           )}
 
-          {incentive.eligibility_criteria && (
+          {incentive.description && (
             <div className="mt-4">
-              <h3 className="font-semibold text-foreground mb-2">Eligibility Criteria</h3>
-              <p className="text-sm text-muted-foreground">{incentive.eligibility_criteria}</p>
+              <h3 className="font-semibold text-foreground mb-2">Full Description</h3>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{incentive.description}</p>
             </div>
           )}
 

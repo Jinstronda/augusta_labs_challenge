@@ -33,9 +33,12 @@ class SemanticSearchService:
         """
         self.embedding_model = embedding_model
         self.qdrant_client = qdrant_client
-        self.collection_name = settings.QDRANT_COLLECTION
+        self.companies_collection = settings.QDRANT_COLLECTION
+        self.incentives_collection = "incentives"  # New collection for incentives
         
-        logger.info(f"SemanticSearchService initialized with collection: {self.collection_name}")
+        logger.info(f"SemanticSearchService initialized")
+        logger.info(f"  Companies collection: {self.companies_collection}")
+        logger.info(f"  Incentives collection: {self.incentives_collection}")
     
     def search_companies(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
@@ -61,9 +64,9 @@ class SemanticSearchService:
             if hasattr(query_embedding, 'tolist'):
                 query_embedding = query_embedding.tolist()
             
-            # Search in Qdrant
+            # Search in Qdrant companies collection
             search_results = self.qdrant_client.search(
-                collection_name=self.collection_name,
+                collection_name=self.companies_collection,
                 query_vector=query_embedding,
                 limit=limit * 2,  # Get more results for filtering
                 with_payload=True
@@ -91,6 +94,76 @@ class SemanticSearchService:
         except Exception as e:
             logger.error(f"Error searching companies: {e}")
             raise
+    
+    def search_incentives_semantic(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search for incentives using semantic vector search (Qdrant).
+        
+        Uses the incentives collection in Qdrant for semantic similarity matching.
+        This is better than keyword search for understanding intent.
+        
+        Args:
+            query: Natural language query
+            limit: Maximum number of results (default 5)
+            
+        Returns:
+            List of incentive matches with scores and metadata
+        """
+        logger.info(f"Searching incentives semantically for query: {query[:100]}...")
+        
+        try:
+            # Check if incentives collection exists
+            collections = self.qdrant_client.get_collections().collections
+            has_incentives = any(c.name == self.incentives_collection for c in collections)
+            
+            if not has_incentives:
+                logger.warning(f"Incentives collection '{self.incentives_collection}' not found, falling back to keyword search")
+                return self.search_incentives(query, limit)
+            
+            # Generate query embedding
+            query_embedding = self.embedding_model.encode(query, convert_to_tensor=False)
+            
+            # Convert to list if numpy array
+            if hasattr(query_embedding, 'tolist'):
+                query_embedding = query_embedding.tolist()
+            
+            # Search in Qdrant incentives collection
+            search_results = self.qdrant_client.search(
+                collection_name=self.incentives_collection,
+                query_vector=query_embedding,
+                limit=limit,
+                with_payload=True
+            )
+            
+            # Format results
+            incentives = []
+            for result in search_results:
+                payload = result.payload
+                
+                incentives.append({
+                    'incentive_id': payload.get('incentive_id'),
+                    'title': payload.get('title'),
+                    'description': None,  # Not in payload
+                    'ai_description': payload.get('ai_description'),
+                    'sector': payload.get('sector'),
+                    'geo_requirement': payload.get('geo_requirement'),
+                    'eligible_actions': payload.get('eligible_actions'),
+                    'funding_rate': None,  # Not in payload
+                    'investment_eur': None,  # Not in payload
+                    'start_date': None,  # Not in payload
+                    'end_date': None,  # Not in payload
+                    'total_budget': None,  # Not in payload
+                    'source_link': None,  # Not in payload
+                    'relevance_score': float(result.score),
+                    'confidence': self._calculate_confidence(result.score)
+                })
+            
+            logger.info(f"Found {len(incentives)} incentives via semantic search")
+            return incentives
+            
+        except Exception as e:
+            logger.error(f"Error in semantic incentive search: {e}, falling back to keyword search")
+            return self.search_incentives(query, limit)
     
     def search_incentives(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
